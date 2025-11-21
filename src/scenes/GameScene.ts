@@ -50,13 +50,13 @@ export class GameScene extends Phaser.Scene {
             })
             .setScrollFactor(0);
 
-        this.cursors = this.input.keyboard.createCursorKeys();
-        this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as Record<
+        this.cursors = this.input.keyboard!.createCursorKeys();
+        this.wasdKeys = this.input.keyboard!.addKeys('W,A,S,D') as Record<
             'W' | 'A' | 'S' | 'D',
             Phaser.Input.Keyboard.Key
         >;
 
-        this.input.on('wheel', (_pointer, _gameObjects, _deltaX, deltaY) => {
+        this.input.on('wheel', (_pointer: unknown, _gameObjects: unknown, _deltaX: number, deltaY: number) => {
             const camera = this.cameras.main;
             const newZoom = Phaser.Math.Clamp(camera.zoom - deltaY * ZOOM_STEP, MIN_ZOOM, MAX_ZOOM);
             camera.setZoom(newZoom);
