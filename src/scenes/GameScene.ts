@@ -342,13 +342,14 @@ export class GameScene extends Phaser.Scene {
     private createBuildMenu(anchorX: number, startY: number) {
         const spacing = 48;
         const buttonWidth = 240;
+        const buttonHeight = 40;
 
         this.buildMenuConfigs.forEach((config, index) => {
             const y = startY + index * spacing;
             const buttonContainer = this.add.container(anchorX, y).setScrollFactor(0).setDepth(1000);
 
             const background = this.add
-                .rectangle(0, 0, buttonWidth, 40, 0x004c99, 1)
+                .rectangle(0, 0, buttonWidth, buttonHeight, 0x004c99, 1)
                 .setOrigin(1, 0)
                 .setStrokeStyle(2, 0x003366);
             const label = this.add
@@ -360,16 +361,19 @@ export class GameScene extends Phaser.Scene {
             const preview = this.add.rectangle(-buttonWidth + 30, 20, 24, 24, config.color, 1).setOrigin(0.5);
             const description = this.add
                 .text(-buttonWidth + 52, 8, config.description ?? 'No description', {
-                    fontSize: '12px',
+                    fontSize: '11px',
                     color: '#cce6ff',
-                    wordWrap: { width: 160 },
+                    wordWrap: { width: 150 },
                 })
                 .setOrigin(0, 0);
 
             buttonContainer.add([background, preview, label, description]);
 
-            buttonContainer.setSize(buttonWidth, 40);
-            buttonContainer.setInteractive({ useHandCursor: true });
+            // Set the interactive area to match the visual bounds (left side of button)
+            buttonContainer.setInteractive(
+                new Phaser.Geom.Rectangle(-buttonWidth, 0, buttonWidth, buttonHeight),
+                Phaser.Geom.Rectangle.Contains
+            );
 
             buttonContainer.on('pointerover', () => {
                 background.setFillStyle(0x005fb3);
