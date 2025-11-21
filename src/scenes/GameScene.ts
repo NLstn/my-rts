@@ -57,6 +57,14 @@ interface ScenarioGoal {
     completed: boolean;
 }
 
+interface TrainingQueueState {
+    building: Building;
+    pending: number;
+    activeTimer?: Phaser.Time.TimerEvent;
+    currentCompleteTime?: number;
+    spawnPoint: Phaser.Math.Vector2;
+}
+
 export class GameScene extends Phaser.Scene {
     private resources: number = 100;
 
@@ -68,6 +76,7 @@ export class GameScene extends Phaser.Scene {
     private resourceText!: Phaser.GameObjects.Text;
     private populationText!: Phaser.GameObjects.Text;
     private spawnWorkerButton!: Phaser.GameObjects.Text;
+    private trainingStatusText!: Phaser.GameObjects.Text;
     private idleWorkerButton!: Phaser.GameObjects.Text;
     private gatherNearestButton!: Phaser.GameObjects.Text;
     private autoGatherButton!: Phaser.GameObjects.Text;
@@ -87,7 +96,9 @@ export class GameScene extends Phaser.Scene {
     private buildMenuConfigs: BuildingConfig[] = [];
     private workers: Worker[] = [];
     private readonly idleWorkers: Set<Worker> = new Set();
+    private trainingQueues: Map<Building, TrainingQueueState> = new Map();
     private selectedWorker?: Worker;
+    private selectedBuilding?: Building;
     private resourceNodes: ResourceNode[] = [];
     private nodeIdCounter: number = 0;
     private readonly resourceManagerConfig: ResourceManagerConfig = {
@@ -100,8 +111,6 @@ export class GameScene extends Phaser.Scene {
         minDistanceBetweenNodes: 200,
     };
     private resourceRespawnTimer?: Phaser.Time.TimerEvent;
-    private workerProductionTimer?: Phaser.Time.TimerEvent;
-    private workerProductionCompleteTime: number = 0;
     private readonly workerProductionTimeMs = 2000;
     private autoGatherEnabled: boolean = false;
 
@@ -143,6 +152,7 @@ export class GameScene extends Phaser.Scene {
         // Sample base building
         const baseBuilding = new Base(this);
         baseBuilding.create(this.basePosition.x, this.basePosition.y);
+        this.configureBuilding(baseBuilding);
         this.placedBuildings.push(baseBuilding);
         this.addDropOffPoint(this.basePosition.clone());
         this.initializeResourceManager();
@@ -471,10 +481,8 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.spawnWorkerButton.on('pointerdown', () => {
-            this.spawnWorker();
+            this.queueWorkerTraining();
         });
-
-        this.setSpawnWorkerButtonState(`Spawn Worker (${this.workerCost})`, true);
 
         this.idleWorkerButton = this.add
             .text(10, 90, 'Next Idle Worker (.)', {
@@ -545,6 +553,16 @@ export class GameScene extends Phaser.Scene {
 
         this.updateAutoGatherButtonState();
 
+        this.trainingStatusText = this.add
+            .text(10, 210, '', {
+                fontSize: '14px',
+                color: '#ffffff',
+                backgroundColor: '#1a1a1a',
+                padding: { x: 10, y: 6 },
+                wordWrap: { width: 280 },
+            })
+            .setScrollFactor(0);
+
         this.placementInfoText = this.add
             .text(width / 2, 10, '', {
                 fontSize: '16px',
@@ -566,6 +584,8 @@ export class GameScene extends Phaser.Scene {
             .setOrigin(0.5, 0)
             .setScrollFactor(0)
             .setVisible(false);
+
+        this.updateTrainingUI();
     }
 
     private initializeScenarioGoals() {
@@ -772,47 +792,74 @@ export class GameScene extends Phaser.Scene {
         this.scenarioResultContainer = container;
     }
 
-    private spawnWorker() {
-        if (this.workerProductionTimer) {
-            this.showFeedback('Worker training already in progress.');
+    private queueWorkerTraining() {
+        if (!this.selectedBuilding || !this.canTrainWorkers(this.selectedBuilding)) {
+            this.showFeedback('Select a production building to train workers.');
+            this.setSpawnWorkerButtonState('Select a production building to train workers', false);
+            return;
+        }
+
+        const queue = this.trainingQueues.get(this.selectedBuilding);
+        if (!queue) {
+            this.showFeedback('Selected building is not ready to train units.');
             return;
         }
 
         if (this.currentPopulation >= this.populationCap) {
             this.showFeedback('Cannot train: population cap reached.');
+            this.updateTrainingUI();
             return;
         }
 
         if (this.resources < this.workerCost) {
             this.showFeedback('Not enough resources to train a worker.');
             this.pulseResourceText();
+            this.updateTrainingUI();
             return;
         }
 
         this.resources -= this.workerCost;
         this.updateResourceText();
 
-        this.workerProductionCompleteTime = this.time.now + this.workerProductionTimeMs;
-        this.setSpawnWorkerButtonState('Training...', false);
+        queue.pending += 1;
+        if (!queue.activeTimer) {
+            this.beginTraining(queue);
+        } else {
+            this.updateTrainingUI();
+        }
+    }
 
-        this.workerProductionTimer = this.time.delayedCall(this.workerProductionTimeMs, () => {
-            this.finishWorkerTraining();
+    private beginTraining(queue: TrainingQueueState) {
+        if (queue.pending <= 0 || queue.activeTimer) {
+            return;
+        }
+
+        queue.pending -= 1;
+        queue.currentCompleteTime = this.time.now + this.workerProductionTimeMs;
+        queue.activeTimer = this.time.delayedCall(this.workerProductionTimeMs, () => {
+            this.completeWorkerTraining(queue);
         });
+        this.updateTrainingUI();
     }
 
-    private finishWorkerTraining() {
-        this.workerProductionTimer = undefined;
-        this.workerProductionCompleteTime = 0;
-        this.createWorker();
-        this.setSpawnWorkerButtonState(`Spawn Worker (${this.workerCost})`, true);
+    private completeWorkerTraining(queue: TrainingQueueState) {
+        queue.activeTimer = undefined;
+        queue.currentCompleteTime = undefined;
+        this.createWorker(queue.spawnPoint);
+        if (queue.pending > 0) {
+            this.beginTraining(queue);
+        } else {
+            this.updateTrainingUI();
+        }
     }
 
-    private createWorker() {
-        const offset = 30 + this.workers.length * 10;
+    private createWorker(spawnPoint?: Phaser.Math.Vector2) {
+        const spawnPosition = spawnPoint ? spawnPoint.clone() : this.basePosition.clone();
+        const jitter = new Phaser.Math.Vector2(Phaser.Math.Between(-12, 12), Phaser.Math.Between(-12, 12));
         const worker = new Worker(
             this,
-            this.basePosition.x + offset,
-            this.basePosition.y + offset,
+            spawnPosition.x + jitter.x,
+            spawnPosition.y + jitter.y,
             this.gridSize,
             () => this.dropOffPoints,
             (amount) => this.depositResource(amount),
@@ -837,9 +884,67 @@ export class GameScene extends Phaser.Scene {
     }
 
     private selectWorker(worker: Worker) {
+        this.clearSelectedBuilding();
         this.selectedWorker?.setSelected(false);
         this.selectedWorker = worker;
         this.selectedWorker.setSelected(true);
+        this.updateTrainingUI();
+    }
+
+    private clearSelectedWorker() {
+        if (this.selectedWorker) {
+            this.selectedWorker.setSelected(false);
+        }
+        this.selectedWorker = undefined;
+    }
+
+    private clearSelectedBuilding() {
+        if (this.selectedBuilding) {
+            this.selectedBuilding.setSelected(false);
+        }
+        this.selectedBuilding = undefined;
+    }
+
+    private selectBuilding(building: Building) {
+        if (this.selectedBuilding === building) {
+            return;
+        }
+
+        this.clearSelectedWorker();
+        this.selectedBuilding?.setSelected(false);
+        this.selectedBuilding = building;
+        this.selectedBuilding.setSelected(true);
+        this.updateTrainingUI();
+    }
+
+    private configureBuilding(building: Building) {
+        building.setSelectionHandler((selectedBuilding) => this.selectBuilding(selectedBuilding));
+
+        if (this.canTrainWorkers(building)) {
+            this.registerProductionBuilding(building);
+        }
+    }
+
+    private canTrainWorkers(building?: Building): building is Building {
+        return Boolean(building?.getConfig().canTrainWorkers);
+    }
+
+    private registerProductionBuilding(building: Building) {
+        const spawnPoint = this.getSpawnPointForBuilding(building);
+        this.trainingQueues.set(building, {
+            building,
+            pending: 0,
+            spawnPoint,
+        });
+        this.updateTrainingUI();
+    }
+
+    private getSpawnPointForBuilding(building: Building): Phaser.Math.Vector2 {
+        const position = building.getPosition() ?? this.basePosition;
+        const config = building.getConfig();
+        const spawnOffset = new Phaser.Math.Vector2(config.width / 2 + 30, 0);
+
+        return position.clone().add(spawnOffset);
     }
 
     private trackWorker(worker: Worker) {
@@ -1006,7 +1111,7 @@ export class GameScene extends Phaser.Scene {
     update(_time: number, delta: number) {
         this.handleCameraControls(delta);
         this.workers.forEach((worker) => worker.update());
-        this.updateWorkerProductionUI();
+        this.updateTrainingUI();
         this.updateConstructionSites(delta);
         this.updateScenarioTimer();
     }
@@ -1098,16 +1203,6 @@ export class GameScene extends Phaser.Scene {
                 Phaser.Math.Clamp(camera.scrollY, 0, maxScrollY),
             );
         }
-    }
-
-    private updateWorkerProductionUI() {
-        if (!this.workerProductionTimer) {
-            return;
-        }
-
-        const remainingMs = Math.max(0, this.workerProductionCompleteTime - this.time.now);
-        const remainingSeconds = remainingMs / 1000;
-        this.setSpawnWorkerButtonState(`Training... ${remainingSeconds.toFixed(1)}s`, false);
     }
 
     private startPlacement(config: BuildingConfig) {
@@ -1277,10 +1372,12 @@ export class GameScene extends Phaser.Scene {
 
     private updateResourceText() {
         this.resourceText.setText(`Resources: ${this.resources}`);
+        this.updateTrainingUI();
     }
 
     private updatePopulationText() {
         this.populationText.setText(this.getPopulationLabel());
+        this.updateTrainingUI();
     }
 
     private setSpawnWorkerButtonState(label: string, enabled: boolean) {
@@ -1294,6 +1391,55 @@ export class GameScene extends Phaser.Scene {
             this.spawnWorkerButton.disableInteractive();
             this.spawnWorkerButton.setStyle({ backgroundColor: '#555555', color: '#cccccc' });
         }
+    }
+
+    private updateTrainingUI() {
+        if (!this.trainingStatusText || !this.spawnWorkerButton) {
+            return;
+        }
+
+        const selectedBuilding = this.selectedBuilding;
+
+        if (!this.canTrainWorkers(selectedBuilding)) {
+            this.setSpawnWorkerButtonState('Select a Base to train workers', false);
+            this.trainingStatusText.setText('No production building selected.');
+            return;
+        }
+
+        const buildingName = selectedBuilding.getConfig().name;
+        const queue = this.trainingQueues.get(selectedBuilding);
+
+        if (!queue) {
+            this.setSpawnWorkerButtonState(`${buildingName} cannot train workers right now`, false);
+            this.trainingStatusText.setText(`${buildingName} is not ready to train units.`);
+            return;
+        }
+
+        const queueCount = queue.pending + (queue.activeTimer ? 1 : 0);
+        const capacityReached = this.currentPopulation >= this.populationCap;
+        const hasResources = this.resources >= this.workerCost;
+        const canTrain = hasResources && !capacityReached;
+
+        this.setSpawnWorkerButtonState(`Train Worker (${this.workerCost}) - ${buildingName}`, canTrain);
+
+        const statusParts: string[] = [`Training at ${buildingName}`, `Queue: ${queueCount}`];
+
+        if (queue.activeTimer && queue.currentCompleteTime) {
+            const remainingMs = Math.max(0, queue.currentCompleteTime - this.time.now);
+            statusParts.push(`Next in ${(remainingMs / 1000).toFixed(1)}s`);
+        } else if (queueCount === 0) {
+            statusParts.push('Idle');
+        }
+
+        if (!hasResources) {
+            statusParts.push('Need more resources');
+        }
+
+        if (capacityReached) {
+            statusParts.push('Population cap reached');
+        }
+
+        this.trainingStatusText.setText(statusParts.join(' | '));
     }
 
     private showFeedback(message: string) {
@@ -1449,6 +1595,7 @@ export class GameScene extends Phaser.Scene {
 
         const building = this.createBuildingFromConfig(site.config);
         building.create(site.position.x, site.position.y);
+        this.configureBuilding(building);
         this.placedBuildings.push(building);
         site.assignedWorker?.releaseFromConstruction();
         this.applyBuildingEffects(site.config, site.position);
