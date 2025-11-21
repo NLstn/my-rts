@@ -1528,9 +1528,11 @@ export class GameScene extends Phaser.Scene {
 
         this.workers.forEach((worker) => worker.handleDepletedNode(node));
 
-        if (!node.respawnTimer) {
-            node.respawnTimer = this.time.delayedCall(node.respawnDelay, () => this.respawnResourceNode(node));
+        // Remove existing timer before creating a new one to prevent multiple timers
+        if (node.respawnTimer) {
+            node.respawnTimer.remove();
         }
+        node.respawnTimer = this.time.delayedCall(node.respawnDelay, () => this.respawnResourceNode(node));
     }
 
     private respawnResourceNode(node: ResourceNode) {
@@ -1573,6 +1575,16 @@ export class GameScene extends Phaser.Scene {
         this.updateConstructionSites(delta);
         this.updateScenarioTimer();
         this.updateResearchProgress();
+    }
+
+    shutdown() {
+        // Clean up all respawn timers when the scene is shutdown or destroyed
+        this.resourceNodes.forEach((node) => {
+            if (node.respawnTimer) {
+                node.respawnTimer.remove();
+                node.respawnTimer = undefined;
+            }
+        });
     }
 
     private handleCameraControls(delta: number) {
