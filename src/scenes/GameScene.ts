@@ -5,43 +5,8 @@ import { Base } from '../buildings/Base';
 import { House } from '../buildings/House';
 import { Storehouse } from '../buildings/Storehouse';
 import { Tower } from '../buildings/Tower';
-import { type ResourceNode, type ResourceType, type WorkerStateType, Worker, WorkerState } from '../units/Worker';
-
-type ResourceSettings = {
-    color: number;
-    label: string;
-    startingAmount: number;
-    yieldPerTick: number;
-    depletionRate: number;
-    respawnDelay: number;
-};
-
-const RESOURCE_CONFIGS: Record<ResourceType, ResourceSettings> = {
-    wood: {
-        color: 0x2f8f2f,
-        label: 'Wood',
-        startingAmount: 180,
-        yieldPerTick: 8,
-        depletionRate: 6,
-        respawnDelay: 12000,
-    },
-    stone: {
-        color: 0x808080,
-        label: 'Stone',
-        startingAmount: 140,
-        yieldPerTick: 6,
-        depletionRate: 7,
-        respawnDelay: 15000,
-    },
-    food: {
-        color: 0xd97706,
-        label: 'Food',
-        startingAmount: 160,
-        yieldPerTick: 7,
-        depletionRate: 5,
-        respawnDelay: 10000,
-    },
-};
+import { ResourceManager, type ResourceManagerConfig, RESOURCE_CONFIGS } from '../services/ResourceManager';
+import { type ResourceType, type WorkerStateType, Worker, WorkerState } from '../units/Worker';
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
@@ -57,16 +22,6 @@ interface PlacementValidationResult {
     valid: boolean;
     reason?: string;
     type?: 'building' | 'resource' | 'baseZone';
-}
-
-interface ResourceManagerConfig {
-    initialSpawnCount: number;
-    nodesPerInterval: number;
-    maxActiveNodes: number;
-    respawnIntervalMs: number;
-    minDistanceFromBase: number;
-    maxDistanceFromBase: number;
-    minDistanceBetweenNodes: number;
 }
 
 interface ConstructionSite {
@@ -170,8 +125,7 @@ export class GameScene extends Phaser.Scene {
     private selectedWorker?: Worker;
     private selectedBuilding?: Building;
     private unlockedWorkerTypeIds: Set<string> = new Set(['worker']);
-    private resourceNodes: ResourceNode[] = [];
-    private nodeIdCounter: number = 0;
+    private resourceManager!: ResourceManager;
     private readonly resourceManagerConfig: ResourceManagerConfig = {
         initialSpawnCount: 4,
         nodesPerInterval: 2,
@@ -181,7 +135,6 @@ export class GameScene extends Phaser.Scene {
         maxDistanceFromBase: 900,
         minDistanceBetweenNodes: 200,
     };
-    private resourceRespawnTimer?: Phaser.Time.TimerEvent;
     private readonly workerProductionTimeMs = 2000;
     private autoGatherEnabled: boolean = false;
 
@@ -242,7 +195,32 @@ export class GameScene extends Phaser.Scene {
         this.configureBuilding(baseBuilding);
         this.placedBuildings.push(baseBuilding);
         this.addDropOffPoint(this.basePosition.clone());
-        this.initializeResourceManager();
+
+        this.resourceManager = new ResourceManager(this.resourceManagerConfig, {
+            scene: this,
+            gridSize: this.gridSize,
+            basePosition: this.basePosition,
+            worldBounds: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+            getBaseSpawnArea: () => this.getBaseSpawnArea(),
+            getConstructionSites: () => this.constructionSites,
+            getPlacedBuildings: () => this.placedBuildings,
+            showFeedback: (message) => this.showFeedback(message),
+            onNodeDepleted: (node) => this.workers.forEach((worker) => worker.handleDepletedNode(node)),
+            onNodeRightClick: (node) => {
+                if (!this.selectedWorker) {
+                    return;
+                }
+
+                if (node.amount <= 0) {
+                    const label = RESOURCE_CONFIGS[node.type].label;
+                    this.showFeedback(`${label} node is depleted.`);
+                    return;
+                }
+
+                this.selectedWorker.assignResource(node);
+            },
+        });
+        this.resourceManager.initialize();
 
         this.generateStartingResources();
         this.initializeScenarioGoals();
@@ -453,124 +431,6 @@ export class GameScene extends Phaser.Scene {
         this.dropOffMarkers.push(marker);
     }
 
-    private initializeResourceManager() {
-        for (let i = 0; i < this.resourceManagerConfig.initialSpawnCount; i++) {
-            this.spawnProceduralResourceNode();
-        }
-
-        this.startResourceRespawnLoop();
-    }
-
-    private startResourceRespawnLoop() {
-        if (this.resourceRespawnTimer) {
-            return;
-        }
-
-        this.resourceRespawnTimer = this.time.addEvent({
-            delay: this.resourceManagerConfig.respawnIntervalMs,
-            loop: true,
-            callback: () => this.spawnResourceNodesForInterval(),
-        });
-    }
-
-    private spawnResourceNodesForInterval() {
-        const openSlots = Math.max(0, this.resourceManagerConfig.maxActiveNodes - this.resourceNodes.length);
-        const nodesToSpawn = Math.min(this.resourceManagerConfig.nodesPerInterval, openSlots);
-
-        let spawned = 0;
-        for (let i = 0; i < nodesToSpawn; i++) {
-            const node = this.spawnProceduralResourceNode();
-            if (node) {
-                spawned++;
-            }
-        }
-
-        if (spawned > 0) {
-            this.announceNewResourceNodes(spawned);
-        }
-    }
-
-    private spawnProceduralResourceNode(): ResourceNode | undefined {
-        const attempts = 30;
-        for (let i = 0; i < attempts; i++) {
-            const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-            const distance = Phaser.Math.Between(
-                this.resourceManagerConfig.minDistanceFromBase,
-                this.resourceManagerConfig.maxDistanceFromBase,
-            );
-
-            const targetX = this.basePosition.x + Math.cos(angle) * distance;
-            const targetY = this.basePosition.y + Math.sin(angle) * distance;
-
-            const snappedX = Phaser.Math.Snap.To(targetX, this.gridSize);
-            const snappedY = Phaser.Math.Snap.To(targetY, this.gridSize);
-
-            const clampedX = Phaser.Math.Clamp(snappedX, 20, WORLD_WIDTH - 20);
-            const clampedY = Phaser.Math.Clamp(snappedY, 20, WORLD_HEIGHT - 20);
-
-            if (!this.isValidResourceSpawn(clampedX, clampedY)) {
-                continue;
-            }
-
-            // Randomly select a resource type
-            const types: ResourceType[] = ['wood', 'stone', 'food'];
-            const randomType = types[Phaser.Math.Between(0, types.length - 1)];
-            return this.createResourceNode(clampedX, clampedY, randomType);
-        }
-
-        return undefined;
-    }
-
-    private isValidResourceSpawn(x: number, y: number) {
-        const distanceToBase = Phaser.Math.Distance.Between(x, y, this.basePosition.x, this.basePosition.y);
-        if (
-            distanceToBase < this.resourceManagerConfig.minDistanceFromBase ||
-            distanceToBase > this.resourceManagerConfig.maxDistanceFromBase
-        ) {
-            return false;
-        }
-
-        if (this.getBaseSpawnArea().contains(x, y)) {
-            return false;
-        }
-
-        const nodeBounds = new Phaser.Geom.Rectangle(x - 22, y - 22, 44, 44);
-
-        const overlapsSite = this.constructionSites.some((site) => {
-            const bounds = site.base.getBounds();
-            return Phaser.Geom.Intersects.RectangleToRectangle(nodeBounds, bounds);
-        });
-
-        if (overlapsSite) {
-            return false;
-        }
-
-        const overlapsBuilding = this.placedBuildings.some((building) => {
-            const sprite = building.getSprite();
-            if (!sprite) return false;
-            const bounds = sprite.getBounds();
-            return Phaser.Geom.Intersects.RectangleToRectangle(nodeBounds, bounds);
-        });
-
-        if (overlapsBuilding) {
-            return false;
-        }
-
-        const collidesWithNode = this.resourceNodes.some((node) => {
-            const distanceToNode = Phaser.Math.Distance.Between(x, y, node.sprite.x, node.sprite.y);
-            return distanceToNode < this.resourceManagerConfig.minDistanceBetweenNodes;
-        });
-
-        return !collidesWithNode;
-    }
-
-    private announceNewResourceNodes(count: number) {
-        const message =
-            count === 1
-                ? 'A new resource node has appeared nearby.'
-                : `${count} new resource nodes have appeared around your base.`;
-        this.showFeedback(message);
-    }
 
     private createUI() {
         const { width } = this.cameras.main;
@@ -1247,9 +1107,9 @@ export class GameScene extends Phaser.Scene {
             this.gridSize,
             () => this.dropOffPoints,
             (type: ResourceType, amount: number) => this.depositResource(type, amount),
-            (node) => this.updateResourceLabel(node),
-            (node) => this.handleResourceDepleted(node),
-            (position) => this.findNearestResource(position),
+            (node) => this.resourceManager.updateResourceLabel(node),
+            (node) => this.resourceManager.handleResourceDepleted(node),
+            (position) => this.resourceManager.findNearestResource(position),
             {
                 color: type.color,
                 harvestRate: type.harvestRate,
@@ -1409,7 +1269,7 @@ export class GameScene extends Phaser.Scene {
     private handleCommand(worldX: number, worldY: number) {
         if (!this.selectedWorker) return;
 
-        const targetNode = this.resourceNodes.find((node) => node.sprite.getBounds().contains(worldX, worldY));
+        const targetNode = this.resourceManager.getNodeAt(worldX, worldY);
 
         if (targetNode) {
             if (targetNode.amount <= 0) {
@@ -1431,121 +1291,7 @@ export class GameScene extends Phaser.Scene {
             { type: 'food', count: 3, distance: 280, spread: 75 },
         ];
 
-        clusterConfigs.forEach((cluster, index) => {
-            const angle = Phaser.Math.DegToRad((360 / clusterConfigs.length) * index + Phaser.Math.Between(-10, 10));
-            const center = new Phaser.Math.Vector2(
-                this.basePosition.x + Math.cos(angle) * cluster.distance,
-                this.basePosition.y + Math.sin(angle) * cluster.distance,
-            );
-
-            for (let i = 0; i < cluster.count; i += 1) {
-                const offset = new Phaser.Math.Vector2(
-                    Phaser.Math.Between(-cluster.spread, cluster.spread),
-                    Phaser.Math.Between(-cluster.spread, cluster.spread),
-                );
-                this.createResourceNode(center.x + offset.x, center.y + offset.y, cluster.type);
-            }
-        });
-    }
-
-    private createResourceNode(x: number, y: number, type: ResourceType) {
-        const settings = RESOURCE_CONFIGS[type];
-        const amount = settings.startingAmount + Phaser.Math.Between(-20, 20);
-        const strokeColor = Phaser.Display.Color.IntegerToColor(settings.color).brighten(20).color;
-
-        const resource = this.add.circle(x, y, 20, settings.color);
-        resource.setStrokeStyle(2, strokeColor);
-        resource.setInteractive({ useHandCursor: true });
-
-        const label = this.add
-            .text(x, y - 35, `${settings.label}: ${amount}`, {
-                fontSize: '14px',
-                color: '#ffffff',
-                backgroundColor: '#000000',
-                padding: { x: 4, y: 2 },
-            })
-            .setOrigin(0.5);
-
-        const node: ResourceNode = {
-            id: this.nodeIdCounter++,
-            sprite: resource,
-            label,
-            amount,
-            type,
-            yieldPerTick: settings.yieldPerTick,
-            depletionRate: settings.depletionRate,
-            respawnDelay: settings.respawnDelay,
-            color: settings.color,
-        };
-
-        resource.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            if (pointer.rightButtonDown() && this.selectedWorker) {
-                if (node.amount <= 0) {
-                    this.showFeedback(`${settings.label} node is depleted.`);
-                    return;
-                }
-                this.selectedWorker.assignResource(node);
-            }
-        });
-
-        this.resourceNodes.push(node);
-
-        return node;
-    }
-
-    private findNearestResource(position: Phaser.Math.Vector2): ResourceNode | undefined {
-        let nearest: ResourceNode | undefined;
-        let shortest = Number.POSITIVE_INFINITY;
-
-        this.resourceNodes.forEach((node) => {
-            if (node.amount <= 0) {
-                return;
-            }
-
-            const distance = Phaser.Math.Distance.Between(position.x, position.y, node.sprite.x, node.sprite.y);
-            if (distance < shortest) {
-                shortest = distance;
-                nearest = node;
-            }
-        });
-
-        return nearest;
-    }
-
-    private updateResourceLabel(node: ResourceNode) {
-        const settings = RESOURCE_CONFIGS[node.type];
-        node.label.setText(`${settings.label}: ${Math.max(0, node.amount)}`);
-        node.label.setColor(node.amount > 0 ? '#ffffff' : '#ffb3b3');
-    }
-
-    private handleResourceDepleted(node: ResourceNode) {
-        const settings = RESOURCE_CONFIGS[node.type];
-        node.amount = 0;
-        node.sprite.disableInteractive();
-        node.label.setText(`${settings.label}: Depleted`);
-        node.label.setColor('#ff6666');
-        this.showFeedback(`${settings.label} node depleted. Respawning soon...`);
-
-        this.workers.forEach((worker) => worker.handleDepletedNode(node));
-
-        // Remove existing timer before creating a new one to prevent multiple timers
-        if (node.respawnTimer) {
-            node.respawnTimer.remove();
-        }
-        node.respawnTimer = this.time.delayedCall(node.respawnDelay, () => this.respawnResourceNode(node));
-    }
-
-    private respawnResourceNode(node: ResourceNode) {
-        const settings = RESOURCE_CONFIGS[node.type];
-        const strokeColor = Phaser.Display.Color.IntegerToColor(settings.color).brighten(20).color;
-        node.amount = settings.startingAmount + Phaser.Math.Between(-20, 20);
-        node.sprite.setFillStyle(settings.color);
-        node.sprite.setStrokeStyle(2, strokeColor);
-        node.sprite.setInteractive({ useHandCursor: true });
-        node.label.setColor('#ffffff');
-        this.updateResourceLabel(node);
-        this.showFeedback(`${settings.label} node has respawned.`);
-        node.respawnTimer = undefined;
+        this.resourceManager.generateStartingResources(clusterConfigs);
     }
 
     private depositResource(type: ResourceType, amount: number) {
@@ -1578,13 +1324,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     shutdown() {
-        // Clean up all respawn timers when the scene is shutdown or destroyed
-        this.resourceNodes.forEach((node) => {
-            if (node.respawnTimer) {
-                node.respawnTimer.remove();
-                node.respawnTimer = undefined;
-            }
-        });
+        this.resourceManager.shutdown();
     }
 
     private handleCameraControls(delta: number) {
@@ -1746,10 +1486,7 @@ export class GameScene extends Phaser.Scene {
             config.height,
         );
 
-        const resourceCollision = this.resourceNodes.find((node) => {
-            const nodeBounds = node.sprite.getBounds();
-            return Phaser.Geom.Intersects.RectangleToRectangle(previewBounds, nodeBounds);
-        });
+        const resourceCollision = this.resourceManager.hasCollisionWithResource(previewBounds);
 
         if (resourceCollision) {
             return { valid: false, reason: 'Cannot place: overlaps resource node', type: 'resource' };
