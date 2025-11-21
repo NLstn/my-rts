@@ -18,7 +18,7 @@ export class Barracks extends Building {
             buildTime: 5000,
             description:
                 'Trains units and unlocks engineer workers. Provides a small military stipend while standing.',
-            unlockedWorkerTypes: ['Engineer'],
+            unlockedWorkerTypes: ['engineer'],
             passiveIncomePerMinute: 30,
         };
     }
