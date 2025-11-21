@@ -37,6 +37,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private buildSpeedMultiplier: number = 1;
 
+    private harvestRate: number = 1000;
+
     private readonly dropOffRetryBaseDelay: number = 2000;
 
     private readonly dropOffRetryMaxDelay: number = 30000;
@@ -103,7 +105,12 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.harvestRate = options?.harvestRate ?? this.harvestRate;
         this.capacity = options?.capacity ?? this.capacity;
         this.buildSpeedMultiplier = options?.buildSpeedMultiplier ?? this.buildSpeedMultiplier;
-        this.harvestMultiplierProvider = options?.harvestMultiplierProvider ?? (() => 1);
+
+        if (options?.harvestMultiplierProvider) {
+            this.harvestMultiplierProvider = options.harvestMultiplierProvider;
+        } else {
+            this.harvestMultiplierProvider = (_position: Phaser.Math.Vector2): number => 1;
+        }
 
         scene.add.existing(this);
         scene.physics.add.existing(this);
