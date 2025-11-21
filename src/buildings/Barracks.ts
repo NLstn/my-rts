@@ -10,6 +10,7 @@ export class Barracks extends Building {
             color: 0x3366ff,
             cost: 50,
             type: 'military',
+            buildTime: 5000,
         };
         super(scene, config);
     }

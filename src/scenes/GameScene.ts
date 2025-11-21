@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { Building, type BuildingConfig } from '../buildings/Building';
 import { Barracks } from '../buildings/Barracks';
 import { Base } from '../buildings/Base';
-import { type ResourceNode, Worker } from '../units/Worker';
+import { type ResourceNode, Worker, WorkerState } from '../units/Worker';
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
@@ -17,6 +17,20 @@ interface PlacementValidationResult {
     valid: boolean;
     reason?: string;
     type?: 'building' | 'resource' | 'baseZone';
+}
+
+interface ConstructionSite {
+    config: BuildingConfig;
+    position: Phaser.Math.Vector2;
+    container: Phaser.GameObjects.Container;
+    base: Phaser.GameObjects.Rectangle;
+    progressBar: Phaser.GameObjects.Rectangle;
+    progressBackground: Phaser.GameObjects.Rectangle;
+    progressText: Phaser.GameObjects.Text;
+    remainingTime: number;
+    totalTime: number;
+    requiresWorker: boolean;
+    assignedWorker?: Worker;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -36,6 +50,7 @@ export class GameScene extends Phaser.Scene {
     private feedbackText?: Phaser.GameObjects.Text;
     private currentPlacement?: BuildingConfig;
     private placedBuildings: Building[] = [];
+    private constructionSites: ConstructionSite[] = [];
     private basePosition: Phaser.Math.Vector2 = new Phaser.Math.Vector2(200, 200);
     private workers: Worker[] = [];
     private selectedWorker?: Worker;
@@ -388,6 +403,7 @@ export class GameScene extends Phaser.Scene {
         this.handleCameraControls(delta);
         this.workers.forEach((worker) => worker.update());
         this.updateWorkerProductionUI();
+        this.updateConstructionSites(delta);
     }
 
     private handleCameraControls(delta: number) {
@@ -446,7 +462,10 @@ export class GameScene extends Phaser.Scene {
     private startPlacement(config: BuildingConfig) {
         this.currentPlacement = config;
         this.feedbackText?.setVisible(false);
-        this.placementInfoText?.setText(`Placing ${config.name} | Cost: ${config.cost} | Left-click to place, Right-click to cancel`);
+        const buildDuration = config.buildTime > 0 ? `${config.buildTime / 1000}s to complete` : 'instant build';
+        this.placementInfoText?.setText(
+            `Placing ${config.name} | Cost: ${config.cost} (paid upfront) | ${buildDuration} | Left-click to place, Right-click to cancel`,
+        );
         this.placementInfoText?.setVisible(true);
 
         if (!this.placementPreview) {
@@ -526,6 +545,15 @@ export class GameScene extends Phaser.Scene {
             }
         }
 
+        const collidesWithSites = this.constructionSites.some((site) => {
+            const bounds = site.base.getBounds();
+            return Phaser.Geom.Intersects.RectangleToRectangle(previewBounds, bounds);
+        });
+
+        if (collidesWithSites) {
+            return { valid: false, reason: 'Cannot place: collision with construction site', type: 'building' };
+        }
+
         const buildingCollision = this.placedBuildings.some((building) => {
             const sprite = building.getSprite();
             if (!sprite) return false;
@@ -571,18 +599,20 @@ export class GameScene extends Phaser.Scene {
         this.resources -= this.currentPlacement.cost;
         this.updateResourceText();
 
-        // Create the appropriate building type
-        let newBuilding: Building;
-        if (this.currentPlacement.name === 'Barracks') {
-            newBuilding = new Barracks(this);
-        } else if (this.currentPlacement.name === 'Base') {
-            newBuilding = new Base(this);
+        const site = this.createConstructionSite(x, y, this.currentPlacement);
+        this.constructionSites.push(site);
+
+        if (site.totalTime <= 0) {
+            this.completeConstruction(site);
         } else {
-            // Fallback - default to Barracks for unknown types
-            newBuilding = new Barracks(this);
+            if (this.selectedWorker) {
+                this.assignWorkerToSite(site, this.selectedWorker);
+                this.showFeedback(`Construction started. ${site.config.buildTime / 1000}s build time.`);
+            } else {
+                this.updateConstructionText(site);
+                this.showFeedback('Construction site placed. Assign a worker to begin building.');
+            }
         }
-        newBuilding.create(x, y);
-        this.placedBuildings.push(newBuilding);
 
         this.cancelPlacement();
     }
@@ -618,6 +648,152 @@ export class GameScene extends Phaser.Scene {
 
         this.feedbackText.setText(message);
         this.feedbackText.setVisible(true);
+    }
+
+    private createConstructionSite(x: number, y: number, config: BuildingConfig): ConstructionSite {
+        const container = this.add.container(x, y);
+        const base = this.add.rectangle(0, 0, config.width, config.height, config.color, 0.25);
+        base.setStrokeStyle(2, 0xffff00);
+
+        const progressBackground = this.add
+            .rectangle(0, config.height / 2 + 12, config.width, 10, 0x000000, 0.6)
+            .setOrigin(0.5);
+        const progressBar = this.add
+            .rectangle(-config.width / 2, progressBackground.y, 0, 8, 0x00ff00, 0.8)
+            .setOrigin(0, 0.5);
+        const progressText = this.add
+            .text(0, progressBackground.y - 18, '', {
+                fontSize: '12px',
+                color: '#ffffff',
+                backgroundColor: '#000000',
+                padding: { x: 4, y: 2 },
+            })
+            .setOrigin(0.5);
+
+        container.add([base, progressBackground, progressBar, progressText]);
+        container.setSize(config.width, config.height + 30);
+        container.setInteractive(
+            new Phaser.Geom.Rectangle(-config.width / 2, -config.height / 2, config.width, config.height + 30),
+            Phaser.Geom.Rectangle.Contains,
+        );
+
+        const requiresWorker = config.buildTime > 0;
+        const site: ConstructionSite = {
+            config,
+            position: new Phaser.Math.Vector2(x, y),
+            container,
+            base,
+            progressBar,
+            progressBackground,
+            progressText,
+            remainingTime: config.buildTime,
+            totalTime: config.buildTime,
+            requiresWorker,
+        };
+
+        container.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (pointer.rightButtonDown()) {
+                this.cancelConstructionSite(site);
+            } else if (this.selectedWorker) {
+                this.assignWorkerToSite(site, this.selectedWorker);
+            }
+        });
+
+        this.updateConstructionText(site);
+        return site;
+    }
+
+    private assignWorkerToSite(site: ConstructionSite, worker: Worker) {
+        if (site.assignedWorker === worker) {
+            return;
+        }
+
+        if (site.assignedWorker) {
+            site.assignedWorker.releaseFromConstruction();
+        }
+
+        site.assignedWorker = worker;
+        worker.assignConstruction(
+            site.position,
+            () => this.updateConstructionText(site),
+            () => {
+                site.assignedWorker = undefined;
+                this.updateConstructionText(site);
+            },
+        );
+        this.updateConstructionText(site);
+    }
+
+    private updateConstructionSites(delta: number) {
+        this.constructionSites.slice().forEach((site) => {
+            if (site.totalTime <= 0) {
+                this.completeConstruction(site);
+                return;
+            }
+
+            const canBuild =
+                !site.requiresWorker || (site.assignedWorker && site.assignedWorker.state === WorkerState.Building);
+            if (canBuild && site.remainingTime > 0) {
+                site.remainingTime = Math.max(0, site.remainingTime - delta);
+                const progress = Phaser.Math.Clamp(1 - site.remainingTime / site.totalTime, 0, 1);
+                site.progressBar.width = site.config.width * progress;
+                this.updateConstructionText(site);
+
+                if (site.remainingTime <= 0) {
+                    this.completeConstruction(site);
+                }
+            } else {
+                this.updateConstructionText(site);
+            }
+        });
+    }
+
+    private updateConstructionText(site: ConstructionSite) {
+        if (site.totalTime <= 0) {
+            site.progressText.setText('Completing...');
+            return;
+        }
+
+        if (site.requiresWorker && (!site.assignedWorker || site.assignedWorker.state !== WorkerState.Building)) {
+            site.progressText.setText('Awaiting worker');
+            site.progressBar.width = 0;
+            return;
+        }
+
+        const remainingSeconds = Math.max(0, Math.ceil(site.remainingTime / 1000));
+        site.progressText.setText(`Building... ${remainingSeconds}s`);
+    }
+
+    private cancelConstructionSite(site: ConstructionSite) {
+        this.constructionSites = this.constructionSites.filter((candidate) => candidate !== site);
+        site.container.destroy();
+        site.assignedWorker?.releaseFromConstruction();
+        this.resources += site.config.cost;
+        this.resourceText.setText(`Resources: ${this.resources}`);
+        this.showFeedback('Construction cancelled. Resources refunded.');
+    }
+
+    private completeConstruction(site: ConstructionSite) {
+        this.constructionSites = this.constructionSites.filter((candidate) => candidate !== site);
+        site.container.destroy();
+
+        const building = this.createBuildingFromConfig(site.config);
+        building.create(site.position.x, site.position.y);
+        this.placedBuildings.push(building);
+        site.assignedWorker?.releaseFromConstruction();
+        this.showFeedback(`${site.config.name} completed.`);
+    }
+
+    private createBuildingFromConfig(config: BuildingConfig): Building {
+        if (config.name === 'Barracks') {
+            return new Barracks(this);
+        }
+
+        if (config.name === 'Base') {
+            return new Base(this);
+        }
+
+        return new Barracks(this);
     }
 
     private pulseResourceText() {

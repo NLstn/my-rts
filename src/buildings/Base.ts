@@ -10,6 +10,7 @@ export class Base extends Building {
             color: 0x8b4513,
             cost: 0,
             type: 'hq',
+            buildTime: 0,
         };
         super(scene, config);
     }

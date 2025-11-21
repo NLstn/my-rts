@@ -9,6 +9,7 @@ export interface BuildingConfig {
     color: number;
     cost: number;
     type: BuildingType;
+    buildTime: number;
 }
 
 export abstract class Building {
