@@ -310,7 +310,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         const harvested = Math.max(1, Math.round(baseYield * harvestMultiplier));
         this.carried += harvested;
         this.targetNode.amount -= harvested;
-        
+
         // Store resource type when first harvesting
         if (!this.resourceType) {
             this.resourceType = this.targetNode.type;
