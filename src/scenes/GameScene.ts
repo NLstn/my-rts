@@ -169,8 +169,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     private createBuildMenuConfigs(): BuildingConfig[] {
-        const prototypes = [new Barracks(this), new House(this), new Storehouse(this), new Tower(this)];
-        return prototypes.map((building) => building.getConfig());
+        return [
+            Barracks.getConfig(),
+            House.getConfig(),
+            Storehouse.getConfig(),
+            Tower.getConfig()
+        ];
     }
 
     private getPopulationLabel() {
@@ -200,6 +204,7 @@ export class GameScene extends Phaser.Scene {
                 .text(-buttonWidth + 52, 8, config.description ?? 'No description', {
                     fontSize: '12px',
                     color: '#cce6ff',
+                    wordWrap: { width: 160 },
                 })
                 .setOrigin(0, 0);
 
@@ -223,7 +228,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     private addDropOffPoint(position: Phaser.Math.Vector2) {
-        this.dropOffPoints.push(position);
+        this.dropOffPoints.push(position.clone());
         const marker = this.add
             .circle(position.x, position.y, 18, 0x1e90ff, 0.25)
             .setStrokeStyle(2, 0x00bfff)
@@ -934,7 +939,7 @@ export class GameScene extends Phaser.Scene {
             return new Tower(this);
         }
 
-        return new Barracks(this);
+        throw new Error(`Unknown building name: ${config.name} in createBuildingFromConfig`);
     }
 
     private applyBuildingEffects(config: BuildingConfig, position: Phaser.Math.Vector2) {
