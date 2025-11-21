@@ -3,7 +3,12 @@ import { Building, type BuildingConfig } from './Building';
 
 export class Storehouse extends Building {
     constructor(scene: Phaser.Scene) {
-        const config: BuildingConfig = {
+        const config: BuildingConfig = Storehouse.getConfig();
+        super(scene, config);
+    }
+
+    static getConfig(): BuildingConfig {
+        return {
             name: 'Storehouse',
             width: 80,
             height: 70,
@@ -14,6 +19,5 @@ export class Storehouse extends Building {
             description: 'Provides a nearby drop-off point for workers.',
             providesDropOff: true,
         };
-        super(scene, config);
     }
 }

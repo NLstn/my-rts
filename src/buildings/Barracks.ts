@@ -3,7 +3,12 @@ import { Building, type BuildingConfig } from './Building';
 
 export class Barracks extends Building {
     constructor(scene: Phaser.Scene) {
-        const config: BuildingConfig = {
+        const config: BuildingConfig = Barracks.getConfig();
+        super(scene, config);
+    }
+
+    static getConfig(): BuildingConfig {
+        return {
             name: 'Barracks',
             width: 100,
             height: 80,
@@ -13,6 +18,5 @@ export class Barracks extends Building {
             buildTime: 5000,
             description: 'Trains units and unlocks army production (placeholder).',
         };
-        super(scene, config);
     }
 }

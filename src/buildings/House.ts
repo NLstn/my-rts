@@ -3,7 +3,12 @@ import { Building, type BuildingConfig } from './Building';
 
 export class House extends Building {
     constructor(scene: Phaser.Scene) {
-        const config: BuildingConfig = {
+        const config: BuildingConfig = House.getConfig();
+        super(scene, config);
+    }
+
+    static getConfig(): BuildingConfig {
+        return {
             name: 'House',
             width: 80,
             height: 60,
@@ -15,6 +20,5 @@ export class House extends Building {
             populationCapIncrease: 4,
             populationBonus: 4,
         };
-        super(scene, config);
     }
 }
