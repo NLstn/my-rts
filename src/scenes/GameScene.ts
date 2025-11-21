@@ -133,7 +133,7 @@ export class GameScene extends Phaser.Scene {
         >;
         this.zoomKeys = this.input.keyboard!.addKeys('Q,E') as Record<'Q' | 'E', Phaser.Input.Keyboard.Key>;
 
-        this.input.on('wheel', (pointer: Phaser.Input.Pointer, _gameObjects, _deltaX, deltaY: number) => {
+        this.input.on('wheel', (pointer: Phaser.Input.Pointer, _gameObjects: unknown, _deltaX: number, deltaY: number) => {
             this.adjustCameraZoom(-deltaY * ZOOM_STEP, pointer);
         });
 
@@ -713,7 +713,7 @@ export class GameScene extends Phaser.Scene {
         container.setSize(config.width, config.height + 30);
         container.setInteractive(
             new Phaser.Geom.Rectangle(-config.width / 2, -config.height / 2, config.width, config.height + 30),
-            Phaser.Geom.Rectangle.Contains,
+            (rect: Phaser.Geom.Rectangle, x: number, y: number) => Phaser.Geom.Rectangle.Contains(rect, x, y),
         );
 
         const requiresWorker = config.buildTime > 0;
