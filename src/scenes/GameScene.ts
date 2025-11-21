@@ -1,21 +1,34 @@
 import Phaser from 'phaser';
 
+const WORLD_WIDTH = 2000;
+const WORLD_HEIGHT = 2000;
+const KEYBOARD_PAN_SPEED = 400;
+const EDGE_SCROLL_SPEED = 350;
+const EDGE_SCROLL_THRESHOLD = 30;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 1.6;
+const ZOOM_STEP = 0.0015;
+
 export class GameScene extends Phaser.Scene {
     private resources: number = 100;
     private resourceText!: Phaser.GameObjects.Text;
+    private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+    private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
 
     constructor() {
         super({ key: 'GameScene' });
     }
 
     create() {
-        const { width, height } = this.cameras.main;
+        const { height } = this.scale;
+
+        this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
         // Background
-        this.add.rectangle(0, 0, width, height, 0x228b22).setOrigin(0);
+        this.add.rectangle(0, 0, WORLD_WIDTH, WORLD_HEIGHT, 0x228b22).setOrigin(0);
 
         // Grid for building placement
-        this.createGrid(width, height);
+        this.createGrid(WORLD_WIDTH, WORLD_HEIGHT);
 
         // UI Panel
         this.createUI();
@@ -36,6 +49,26 @@ export class GameScene extends Phaser.Scene {
                 padding: { x: 5, y: 5 },
             })
             .setScrollFactor(0);
+
+        this.cursors = this.input.keyboard.createCursorKeys();
+        this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as Record<
+            'W' | 'A' | 'S' | 'D',
+            Phaser.Input.Keyboard.Key
+        >;
+
+        this.input.on('wheel', (_pointer, _gameObjects, _deltaX, deltaY) => {
+            const camera = this.cameras.main;
+            const newZoom = Phaser.Math.Clamp(camera.zoom - deltaY * ZOOM_STEP, MIN_ZOOM, MAX_ZOOM);
+            camera.setZoom(newZoom);
+
+            const maxScrollX = Math.max(WORLD_WIDTH - camera.displayWidth, 0);
+            const maxScrollY = Math.max(WORLD_HEIGHT - camera.displayHeight, 0);
+
+            camera.setScroll(
+                Phaser.Math.Clamp(camera.scrollX, 0, maxScrollX),
+                Phaser.Math.Clamp(camera.scrollY, 0, maxScrollY),
+            );
+        });
     }
 
     private createGrid(width: number, height: number) {
@@ -137,5 +170,52 @@ export class GameScene extends Phaser.Scene {
                 resource.destroy();
             },
         });
+    }
+
+    update(_time: number, delta: number) {
+        this.handleCameraControls(delta);
+    }
+
+    private handleCameraControls(delta: number) {
+        const camera = this.cameras.main;
+        const deltaSeconds = delta / 1000;
+        const pointer = this.input.activePointer;
+
+        let moveX = 0;
+        let moveY = 0;
+
+        if (this.cursors.left?.isDown || this.wasdKeys.A.isDown) {
+            moveX -= KEYBOARD_PAN_SPEED;
+        }
+
+        if (this.cursors.right?.isDown || this.wasdKeys.D.isDown) {
+            moveX += KEYBOARD_PAN_SPEED;
+        }
+
+        if (this.cursors.up?.isDown || this.wasdKeys.W.isDown) {
+            moveY -= KEYBOARD_PAN_SPEED;
+        }
+
+        if (this.cursors.down?.isDown || this.wasdKeys.S.isDown) {
+            moveY += KEYBOARD_PAN_SPEED;
+        }
+
+        if (pointer.x <= EDGE_SCROLL_THRESHOLD) {
+            moveX -= EDGE_SCROLL_SPEED;
+        } else if (pointer.x >= this.scale.width - EDGE_SCROLL_THRESHOLD) {
+            moveX += EDGE_SCROLL_SPEED;
+        }
+
+        if (pointer.y <= EDGE_SCROLL_THRESHOLD) {
+            moveY -= EDGE_SCROLL_SPEED;
+        } else if (pointer.y >= this.scale.height - EDGE_SCROLL_THRESHOLD) {
+            moveY += EDGE_SCROLL_SPEED;
+        }
+
+        const maxScrollX = Math.max(WORLD_WIDTH - camera.displayWidth, 0);
+        const maxScrollY = Math.max(WORLD_HEIGHT - camera.displayHeight, 0);
+
+        camera.scrollX = Phaser.Math.Clamp(camera.scrollX + moveX * deltaSeconds, 0, maxScrollX);
+        camera.scrollY = Phaser.Math.Clamp(camera.scrollY + moveY * deltaSeconds, 0, maxScrollY);
     }
 }
