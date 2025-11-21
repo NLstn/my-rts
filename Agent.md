@@ -155,6 +155,29 @@ The game uses Phaser's scene system to organize different game states:
 
 ---
 
+## ⚠️ Critical: Pre-Completion Checklist
+
+**Before finishing any coding task, you MUST:**
+
+1. **Run Linting** - Ensure code quality and style compliance
+   ```bash
+   npm run lint
+   ```
+
+2. **Run Tests** - Verify all tests pass
+   ```bash
+   npm run test -- --run
+   ```
+
+3. **Run Build** - Confirm the project builds successfully
+   ```bash
+   npm run build
+   ```
+
+**All three commands must pass without errors before considering a task complete.** This ensures code quality, prevents regressions, and maintains project stability.
+
+---
+
 ## Next Steps for Development
 
 ### Immediate Enhancements
