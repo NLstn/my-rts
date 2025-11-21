@@ -238,7 +238,8 @@ export class GameScene extends Phaser.Scene {
                 backgroundColor: '#000000',
                 padding: { x: 5, y: 5 },
             })
-            .setScrollFactor(0);
+            .setScrollFactor(0)
+            .setDepth(1000);
 
         this.cursors = this.input.keyboard!.createCursorKeys();
         this.wasdKeys = this.input.keyboard!.addKeys('W,A,S,D') as Record<
@@ -344,7 +345,7 @@ export class GameScene extends Phaser.Scene {
 
         this.buildMenuConfigs.forEach((config, index) => {
             const y = startY + index * spacing;
-            const buttonContainer = this.add.container(anchorX, y).setScrollFactor(0);
+            const buttonContainer = this.add.container(anchorX, y).setScrollFactor(0).setDepth(1000);
 
             const background = this.add
                 .rectangle(0, 0, buttonWidth, 40, 0x004c99, 1)
@@ -521,7 +522,8 @@ export class GameScene extends Phaser.Scene {
                 padding: { x: 10, y: 5 },
             })
             .setOrigin(1, 0)
-            .setScrollFactor(0);
+            .setScrollFactor(0)
+            .setDepth(1000);
 
         this.populationText = this.add
             .text(width - 10, 40, this.getPopulationLabel(), {
@@ -531,7 +533,8 @@ export class GameScene extends Phaser.Scene {
                 padding: { x: 8, y: 4 },
             })
             .setOrigin(1, 0)
-            .setScrollFactor(0);
+            .setScrollFactor(0)
+            .setDepth(1000);
 
         this.createBuildMenu(width - 10, 70);
 
@@ -544,6 +547,7 @@ export class GameScene extends Phaser.Scene {
                 padding: { x: 10, y: 5 },
             })
             .setScrollFactor(0)
+            .setDepth(1000)
             .setInteractive({ useHandCursor: true });
 
         menuButton.on('pointerover', () => {
@@ -580,6 +584,7 @@ export class GameScene extends Phaser.Scene {
                 padding: { x: 10, y: 5 },
             })
             .setScrollFactor(0)
+            .setDepth(1000)
             .setInteractive({ useHandCursor: true });
 
         this.spawnWorkerButton.on('pointerover', () => {
@@ -685,6 +690,7 @@ export class GameScene extends Phaser.Scene {
             })
             .setOrigin(0.5, 0)
             .setScrollFactor(0)
+            .setDepth(1000)
             .setVisible(false);
 
         this.feedbackText = this.add
@@ -696,6 +702,7 @@ export class GameScene extends Phaser.Scene {
             })
             .setOrigin(0.5, 0)
             .setScrollFactor(0)
+            .setDepth(1000)
             .setVisible(false);
 
         this.createResearchUI();
