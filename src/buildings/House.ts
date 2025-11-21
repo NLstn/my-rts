@@ -9,9 +9,11 @@ export class House extends Building {
             height: 60,
             color: 0xffcc66,
             cost: 40,
-            type: 'utility',
+            type: 'housing',
             buildTime: 4000,
+            description: 'Increases population cap by 4.',
             populationCapIncrease: 4,
+            populationBonus: 4,
         };
         super(scene, config);
     }

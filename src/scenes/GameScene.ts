@@ -3,6 +3,8 @@ import { Building, type BuildingConfig } from '../buildings/Building';
 import { Barracks } from '../buildings/Barracks';
 import { Base } from '../buildings/Base';
 import { House } from '../buildings/House';
+import { Storehouse } from '../buildings/Storehouse';
+import { Tower } from '../buildings/Tower';
 import { type ResourceNode, Worker, WorkerState } from '../units/Worker';
 
 const WORLD_WIDTH = 2000;
@@ -41,10 +43,11 @@ export class GameScene extends Phaser.Scene {
     private readonly workerCost: number = 25;
 
     private populationCap: number = 8;
+    private currentPopulation: number = 0;
 
     private resourceText!: Phaser.GameObjects.Text;
-    private spawnWorkerButton!: Phaser.GameObjects.Text;
     private populationText!: Phaser.GameObjects.Text;
+    private spawnWorkerButton!: Phaser.GameObjects.Text;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
     private zoomKeys!: Record<'Q' | 'E', Phaser.Input.Keyboard.Key>;
@@ -56,6 +59,9 @@ export class GameScene extends Phaser.Scene {
     private placedBuildings: Building[] = [];
     private constructionSites: ConstructionSite[] = [];
     private basePosition: Phaser.Math.Vector2 = new Phaser.Math.Vector2(200, 200);
+    private dropOffPoints: Phaser.Math.Vector2[] = [];
+    private dropOffMarkers: Phaser.GameObjects.Shape[] = [];
+    private buildMenuConfigs: BuildingConfig[] = [];
     private workers: Worker[] = [];
     private selectedWorker?: Worker;
     private resourceNodes: ResourceNode[] = [];
@@ -81,6 +87,8 @@ export class GameScene extends Phaser.Scene {
         // Grid for building placement
         this.createGrid(WORLD_WIDTH, WORLD_HEIGHT);
 
+        this.buildMenuConfigs = this.createBuildMenuConfigs();
+
         // UI Panel
         this.createUI();
 
@@ -88,6 +96,7 @@ export class GameScene extends Phaser.Scene {
         const baseBuilding = new Base(this);
         baseBuilding.create(this.basePosition.x, this.basePosition.y);
         this.placedBuildings.push(baseBuilding);
+        this.addDropOffPoint(this.basePosition.clone());
 
         // Sample resource nodes
         this.createResourceNode(600, 300);
@@ -159,6 +168,69 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
+    private createBuildMenuConfigs(): BuildingConfig[] {
+        const prototypes = [new Barracks(this), new House(this), new Storehouse(this), new Tower(this)];
+        return prototypes.map((building) => building.getConfig());
+    }
+
+    private getPopulationLabel() {
+        return `Population: ${this.currentPopulation}/${this.populationCap}`;
+    }
+
+    private createBuildMenu(anchorX: number, startY: number) {
+        const spacing = 48;
+        const buttonWidth = 240;
+
+        this.buildMenuConfigs.forEach((config, index) => {
+            const y = startY + index * spacing;
+            const buttonContainer = this.add.container(anchorX, y).setScrollFactor(0);
+
+            const background = this.add
+                .rectangle(0, 0, buttonWidth, 40, 0x004c99, 1)
+                .setOrigin(1, 0)
+                .setStrokeStyle(2, 0x003366);
+            const label = this.add
+                .text(-10, 8, `${config.name} (${config.cost})`, {
+                    fontSize: '14px',
+                    color: '#ffffff',
+                })
+                .setOrigin(1, 0);
+            const preview = this.add.rectangle(-buttonWidth + 30, 20, 24, 24, config.color, 1).setOrigin(0.5);
+            const description = this.add
+                .text(-buttonWidth + 52, 8, config.description ?? 'No description', {
+                    fontSize: '12px',
+                    color: '#cce6ff',
+                })
+                .setOrigin(0, 0);
+
+            buttonContainer.add([background, preview, label, description]);
+
+            buttonContainer.setSize(buttonWidth, 40);
+            buttonContainer.setInteractive({ useHandCursor: true });
+
+            buttonContainer.on('pointerover', () => {
+                background.setFillStyle(0x005fb3);
+            });
+
+            buttonContainer.on('pointerout', () => {
+                background.setFillStyle(0x004c99);
+            });
+
+            buttonContainer.on('pointerdown', () => {
+                this.startPlacement(config);
+            });
+        });
+    }
+
+    private addDropOffPoint(position: Phaser.Math.Vector2) {
+        this.dropOffPoints.push(position);
+        const marker = this.add
+            .circle(position.x, position.y, 18, 0x1e90ff, 0.25)
+            .setStrokeStyle(2, 0x00bfff)
+            .setDepth(2);
+        this.dropOffMarkers.push(marker);
+    }
+
     private createUI() {
         const { width } = this.cameras.main;
 
@@ -174,51 +246,16 @@ export class GameScene extends Phaser.Scene {
             .setScrollFactor(0);
 
         this.populationText = this.add
-            .text(width - 10, 40, '', {
+            .text(width - 10, 40, this.getPopulationLabel(), {
                 fontSize: '16px',
                 color: '#ffffff',
-                backgroundColor: '#333333',
+                backgroundColor: '#000000',
                 padding: { x: 8, y: 4 },
             })
             .setOrigin(1, 0)
             .setScrollFactor(0);
 
-        this.updatePopulationText();
-
-        const barracks = new Barracks(this);
-        const barracksConfig = barracks.getConfig();
-        const house = new House(this);
-        const houseConfig = house.getConfig();
-
-        const houseButton = this.add
-            .text(width - 10, 70, `Build ${houseConfig.name} (${houseConfig.cost})`, {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#0066cc',
-                padding: { x: 10, y: 5 },
-            })
-            .setOrigin(1, 0)
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
-
-        houseButton.on('pointerdown', () => {
-            this.startPlacement(houseConfig);
-        });
-
-        const barracksButton = this.add
-            .text(width - 10, 100, `Build ${barracksConfig.name} (${barracksConfig.cost})`, {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#004d99',
-                padding: { x: 10, y: 5 },
-            })
-            .setOrigin(1, 0)
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
-
-        barracksButton.on('pointerdown', () => {
-            this.startPlacement(barracksConfig);
-        });
+        this.createBuildMenu(width - 10, 70);
 
         // Back to menu button
         const menuButton = this.add
@@ -296,7 +333,7 @@ export class GameScene extends Phaser.Scene {
             return;
         }
 
-        if (this.workers.length >= this.populationCap) {
+        if (this.currentPopulation >= this.populationCap) {
             this.showFeedback('Cannot train: population cap reached.');
             return;
         }
@@ -331,11 +368,11 @@ export class GameScene extends Phaser.Scene {
             this,
             this.basePosition.x + offset,
             this.basePosition.y + offset,
-            this.basePosition,
             this.gridSize,
             (amount) => this.depositResource(amount),
             (node) => this.updateResourceLabel(node),
             (node) => this.handleResourceDepleted(node),
+            () => this.dropOffPoints,
         );
 
         worker.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -345,6 +382,7 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.workers.push(worker);
+        this.currentPopulation += 1;
         this.updatePopulationText();
         this.selectWorker(worker);
     }
@@ -700,7 +738,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     private updatePopulationText() {
-        this.populationText.setText(`Population: ${this.workers.length}/${this.populationCap}`);
+        this.populationText.setText(this.getPopulationLabel());
     }
 
     private setSpawnWorkerButtonState(label: string, enabled: boolean) {
@@ -871,7 +909,7 @@ export class GameScene extends Phaser.Scene {
         building.create(site.position.x, site.position.y);
         this.placedBuildings.push(building);
         site.assignedWorker?.releaseFromConstruction();
-        this.applyConstructionRewards(site.config);
+        this.applyBuildingEffects(site.config, site.position);
         this.showFeedback(`${site.config.name} completed.`);
     }
 
@@ -888,7 +926,28 @@ export class GameScene extends Phaser.Scene {
             return new House(this);
         }
 
+        if (config.name === 'Storehouse') {
+            return new Storehouse(this);
+        }
+
+        if (config.name === 'Tower') {
+            return new Tower(this);
+        }
+
         return new Barracks(this);
+    }
+
+    private applyBuildingEffects(config: BuildingConfig, position: Phaser.Math.Vector2) {
+        // Support both populationBonus (new) and populationCapIncrease (legacy)
+        const popIncrease = config.populationBonus ?? config.populationCapIncrease ?? 0;
+        if (popIncrease > 0) {
+            this.populationCap += popIncrease;
+            this.updatePopulationText();
+        }
+
+        if (config.providesDropOff) {
+            this.addDropOffPoint(position.clone());
+        }
     }
 
     private pulseResourceText() {
@@ -899,13 +958,5 @@ export class GameScene extends Phaser.Scene {
             yoyo: true,
             repeat: 2,
         });
-    }
-
-    private applyConstructionRewards(config: BuildingConfig) {
-        if (config.populationCapIncrease) {
-            this.populationCap += config.populationCapIncrease;
-        }
-
-        this.updatePopulationText();
     }
 }
