@@ -35,6 +35,10 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private harvestTimer?: Phaser.Time.TimerEvent;
 
+    private dropOffRetryTimer?: Phaser.Time.TimerEvent;
+
+    private dropOffRetryCount: number = 0;
+
     private readonly gridSize: number;
 
     private readonly getDropOffTargets: () => Phaser.Math.Vector2[];
@@ -87,6 +91,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     public assignResource(node: ResourceNode) {
         this.stopHarvesting();
         this.clearBuildTarget();
+        this.stopDropOffRetry();
         this.targetNode = node;
         this.updateState(WorkerState.Moving);
         this.buildPathTo(node.sprite.x, node.sprite.y);
@@ -95,6 +100,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     public moveTo(target: Phaser.Math.Vector2) {
         this.stopHarvesting();
         this.clearBuildTarget();
+        this.stopDropOffRetry();
         this.targetNode = undefined;
         this.updateState(WorkerState.Moving);
         this.buildPathTo(target.x, target.y);
@@ -102,6 +108,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     public assignConstruction(target: Phaser.Math.Vector2, onArrive: () => void, onCancel: () => void) {
         this.stopHarvesting();
+        this.stopDropOffRetry();
         this.buildTarget = {
             position: target.clone(),
             onArrive,
@@ -254,8 +261,10 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         const nearestDropOff = this.findNearestDropOff();
         if (nearestDropOff) {
             this.buildPathTo(nearestDropOff.x, nearestDropOff.y);
+            this.dropOffRetryCount = 0;
         } else {
             this.updateState(WorkerState.Idle);
+            this.scheduleDropOffRetry();
         }
     }
 
@@ -286,6 +295,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.carried = 0;
         this.updateState(WorkerState.Idle);
         this.targetNode = undefined;
+        this.stopDropOffRetry();
     }
 
     private stopHarvesting() {
@@ -298,6 +308,36 @@ export class Worker extends Phaser.GameObjects.Rectangle {
             const fillColor = this.targetNode.amount <= 0 ? 0x777755 : 0xffd700;
             this.targetNode.sprite.setFillStyle(fillColor);
         }
+    }
+
+    private scheduleDropOffRetry() {
+        if (this.carried <= 0) {
+            return;
+        }
+
+        this.stopDropOffRetry();
+
+        // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
+        const baseDelay = 2000;
+        const delay = Math.min(baseDelay * Math.pow(2, this.dropOffRetryCount), 30000);
+        this.dropOffRetryCount++;
+
+        this.dropOffRetryTimer = this.scene.time.addEvent({
+            delay,
+            callback: () => {
+                if (this.carried > 0 && this.state === WorkerState.Idle) {
+                    this.returnToBase();
+                }
+            },
+        });
+    }
+
+    private stopDropOffRetry() {
+        if (this.dropOffRetryTimer) {
+            this.dropOffRetryTimer.remove(false);
+            this.dropOffRetryTimer = undefined;
+        }
+        this.dropOffRetryCount = 0;
     }
 
     private clearBuildTarget() {
