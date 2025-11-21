@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 
-export enum WorkerState {
-    Idle = 'idle',
-    Moving = 'moving',
-    Harvesting = 'harvesting',
-    Returning = 'returning',
-}
+export const WorkerState = {
+    Idle: 'idle',
+    Moving: 'moving',
+    Harvesting: 'harvesting',
+    Returning: 'returning',
+} as const;
+
+export type WorkerStateType = typeof WorkerState[keyof typeof WorkerState];
 
 export interface ResourceNode {
     id: number;
@@ -14,7 +16,7 @@ export interface ResourceNode {
 }
 
 export class Worker extends Phaser.GameObjects.Rectangle {
-    private state: WorkerState = WorkerState.Idle;
+    public state: WorkerStateType = WorkerState.Idle;
 
     private speed: number = 140;
 
