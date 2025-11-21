@@ -29,6 +29,10 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private carried: number = 0;
 
+    private readonly dropOffRetryBaseDelay: number = 2000;
+
+    private readonly dropOffRetryMaxDelay: number = 30000;
+
     private targetNode?: ResourceNode;
 
     private waypoints: Phaser.Math.Vector2[] = [];
@@ -317,25 +321,31 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     }
 
     private scheduleDropOffRetry() {
-        if (this.carried <= 0) {
+        if (!this.shouldAttemptDropOff()) {
             return;
         }
 
         this.stopDropOffRetry();
 
         // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
-        const baseDelay = 2000;
-        const delay = Math.min(baseDelay * Math.pow(2, this.dropOffRetryCount), 30000);
+        const delay = Math.min(
+            this.dropOffRetryBaseDelay * Math.pow(2, this.dropOffRetryCount),
+            this.dropOffRetryMaxDelay,
+        );
         this.dropOffRetryCount++;
 
         this.dropOffRetryTimer = this.scene.time.addEvent({
             delay,
             callback: () => {
-                if (this.carried > 0 && this.state === WorkerState.Idle) {
+                if (this.shouldAttemptDropOff()) {
                     this.returnToBase();
                 }
             },
         });
+    }
+
+    private shouldAttemptDropOff(): boolean {
+        return this.carried > 0 && this.state === WorkerState.Idle;
     }
 
     private stopDropOffRetry() {
