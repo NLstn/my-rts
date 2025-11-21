@@ -12,7 +12,6 @@ export class BootScene extends Phaser.Scene {
 
     create() {
         // Boot scene complete, move to main menu
-        // TEMPORARY: Start directly in GameScene for testing
-        this.scene.start('GameScene');
+        this.scene.start('MainMenuScene');
     }
 }
