@@ -674,7 +674,6 @@ export class GameScene extends Phaser.Scene {
             .setScrollFactor(0);
 
         this.updateWorkerTypeToggle();
-        this.updateSpawnWorkerButtonLabel(true);
         this.updateTrainingUI();
 
         this.placementInfoText = this.add
@@ -727,9 +726,7 @@ export class GameScene extends Phaser.Scene {
 
         this.selectedWorkerTypeIndex = (this.selectedWorkerTypeIndex + 1) % available.length;
         this.updateWorkerTypeToggle();
-        if (!this.workerProductionTimer) {
-            this.updateSpawnWorkerButtonLabel(true);
-        }
+        this.updateTrainingUI();
     }
 
     private updateWorkerTypeToggle() {
@@ -738,14 +735,6 @@ export class GameScene extends Phaser.Scene {
         const suffix = availableCount > 1 ? ' (click to cycle)' : '';
         this.workerTypeToggle.setText(`Training: ${type.name}${suffix}`);
         this.workerTypeToggle.setStyle({ backgroundColor: availableCount > 1 ? '#2e8b57' : '#1f4d36' });
-    }
-
-    private updateSpawnWorkerButtonLabel(enabled: boolean) {
-        const type = this.getSelectedWorkerType();
-        const label = this.workerProductionTimer
-            ? 'Training...'
-            : `Train ${type.name} (${type.cost})`;
-        this.setSpawnWorkerButtonState(label, enabled);
     }
 
     private unlockWorkerTypes(typeIds: string[]) {
@@ -761,9 +750,7 @@ export class GameScene extends Phaser.Scene {
         if (added) {
             this.showFeedback('New worker specializations are now available.');
             this.updateWorkerTypeToggle();
-            if (!this.workerProductionTimer) {
-                this.updateSpawnWorkerButtonLabel(true);
-            }
+            this.updateTrainingUI();
         }
     }
 
@@ -909,7 +896,6 @@ export class GameScene extends Phaser.Scene {
             const baseMultiplier = type?.buildSpeedMultiplier ?? 1;
             worker.setBuildSpeedMultiplier(baseMultiplier * this.buildSpeedBonusMultiplier);
         });
->>>>>>> 946f078 (Add economic bonuses and research system)
     }
 
     private initializeScenarioGoals() {
@@ -1556,19 +1542,6 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
-    private updateWorkerProductionUI() {
-        if (!this.workerProductionTimer) {
-            return;
-        }
-
-        const remainingMs = Math.max(0, this.workerProductionCompleteTime - this.time.now);
-        const remainingSeconds = remainingMs / 1000;
-        const trainingType = this.workerTypes.find((type) => type.id === this.workerProductionTypeId);
-        const label = trainingType ? `Training ${trainingType.name}... ${remainingSeconds.toFixed(1)}s` : 'Training...';
-        this.setSpawnWorkerButtonState(label, false);
-    }
-
->>>>>>> 946f078 (Add economic bonuses and research system)
     private startPlacement(config: BuildingConfig) {
         this.currentPlacement = config;
         this.feedbackText?.setVisible(false);
@@ -1781,10 +1754,11 @@ export class GameScene extends Phaser.Scene {
 
         const queueCount = queue.pending + (queue.activeTimer ? 1 : 0);
         const capacityReached = this.currentPopulation >= this.populationCap;
-        const hasResources = this.resources >= this.workerCost;
+        const type = this.getSelectedWorkerType();
+        const hasResources = this.resources >= type.cost;
         const canTrain = hasResources && !capacityReached;
 
-        this.setSpawnWorkerButtonState(`Train Worker (${this.workerCost}) - ${buildingName}`, canTrain);
+        this.setSpawnWorkerButtonState(`Train ${type.name} (${type.cost}) - ${buildingName}`, canTrain);
 
         const statusParts: string[] = [`Training at ${buildingName}`, `Queue: ${queueCount}`];
 
