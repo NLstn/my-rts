@@ -16,7 +16,12 @@ const ZOOM_STEP = 0.0015;
 export class GameScene extends Phaser.Scene {
     private resources: number = 100;
 
+    private readonly workerCost: number = 25;
+
+    private readonly populationCap?: number = 8;
+
     private resourceText!: Phaser.GameObjects.Text;
+    private spawnWorkerButton!: Phaser.GameObjects.Text;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
     private readonly gridSize = 50;
@@ -30,6 +35,9 @@ export class GameScene extends Phaser.Scene {
     private selectedWorker?: Worker;
     private resourceNodes: ResourceNode[] = [];
     private nodeIdCounter: number = 0;
+    private workerProductionTimer?: Phaser.Time.TimerEvent;
+    private workerProductionCompleteTime: number = 0;
+    private readonly workerProductionTimeMs = 2000;
 
     constructor() {
         super({ key: 'GameScene' });
@@ -190,8 +198,8 @@ export class GameScene extends Phaser.Scene {
             this.scene.start('MainMenuScene');
         });
 
-        const spawnWorkerButton = this.add
-            .text(10, 50, 'Spawn Worker', {
+        this.spawnWorkerButton = this.add
+            .text(10, 50, '', {
                 fontSize: '16px',
                 color: '#ffffff',
                 backgroundColor: '#3366cc',
@@ -200,17 +208,19 @@ export class GameScene extends Phaser.Scene {
             .setScrollFactor(0)
             .setInteractive({ useHandCursor: true });
 
-        spawnWorkerButton.on('pointerover', () => {
-            spawnWorkerButton.setStyle({ backgroundColor: '#3355aa' });
+        this.spawnWorkerButton.on('pointerover', () => {
+            this.spawnWorkerButton.setStyle({ backgroundColor: '#3355aa' });
         });
 
-        spawnWorkerButton.on('pointerout', () => {
-            spawnWorkerButton.setStyle({ backgroundColor: '#3366cc' });
+        this.spawnWorkerButton.on('pointerout', () => {
+            this.spawnWorkerButton.setStyle({ backgroundColor: '#3366cc' });
         });
 
-        spawnWorkerButton.on('pointerdown', () => {
+        this.spawnWorkerButton.on('pointerdown', () => {
             this.spawnWorker();
         });
+
+        this.setSpawnWorkerButtonState(`Spawn Worker (${this.workerCost})`, true);
 
         this.placementInfoText = this.add
             .text(width / 2, 10, '', {
@@ -236,6 +246,41 @@ export class GameScene extends Phaser.Scene {
     }
 
     private spawnWorker() {
+        if (this.workerProductionTimer) {
+            this.showFeedback('Worker training already in progress.');
+            return;
+        }
+
+        if (this.populationCap !== undefined && this.workers.length >= this.populationCap) {
+            this.showFeedback('Cannot train: population cap reached.');
+            return;
+        }
+
+        if (this.resources < this.workerCost) {
+            this.showFeedback('Not enough resources to train a worker.');
+            this.pulseResourceText();
+            return;
+        }
+
+        this.resources -= this.workerCost;
+        this.updateResourceText();
+
+        this.workerProductionCompleteTime = this.time.now + this.workerProductionTimeMs;
+        this.setSpawnWorkerButtonState('Training...', false);
+
+        this.workerProductionTimer = this.time.delayedCall(this.workerProductionTimeMs, () => {
+            this.finishWorkerTraining();
+        });
+    }
+
+    private finishWorkerTraining() {
+        this.workerProductionTimer = undefined;
+        this.workerProductionCompleteTime = 0;
+        this.createWorker();
+        this.setSpawnWorkerButtonState(`Spawn Worker (${this.workerCost})`, true);
+    }
+
+    private createWorker() {
         const offset = 30 + this.workers.length * 10;
         const worker = new Worker(
             this,
@@ -297,12 +342,13 @@ export class GameScene extends Phaser.Scene {
 
     private depositResource(amount: number) {
         this.resources += amount;
-        this.resourceText.setText(`Resources: ${this.resources}`);
+        this.updateResourceText();
     }
 
     update(_time: number, delta: number) {
         this.handleCameraControls(delta);
         this.workers.forEach((worker) => worker.update());
+        this.updateWorkerProductionUI();
     }
 
     private handleCameraControls(delta: number) {
@@ -346,6 +392,16 @@ export class GameScene extends Phaser.Scene {
 
         camera.scrollX = Phaser.Math.Clamp(camera.scrollX + moveX * deltaSeconds, 0, maxScrollX);
         camera.scrollY = Phaser.Math.Clamp(camera.scrollY + moveY * deltaSeconds, 0, maxScrollY);
+    }
+
+    private updateWorkerProductionUI() {
+        if (!this.workerProductionTimer) {
+            return;
+        }
+
+        const remainingMs = Math.max(0, this.workerProductionCompleteTime - this.time.now);
+        const remainingSeconds = remainingMs / 1000;
+        this.setSpawnWorkerButtonState(`Training... ${remainingSeconds.toFixed(1)}s`, false);
     }
 
     private startPlacement(config: BuildingConfig) {
@@ -427,7 +483,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         this.resources -= this.currentPlacement.cost;
-        this.resourceText.setText(`Resources: ${this.resources}`);
+        this.updateResourceText();
 
         // Create the appropriate building type
         let newBuilding: Building;
@@ -450,6 +506,23 @@ export class GameScene extends Phaser.Scene {
         this.placementPreview?.setVisible(false);
         this.placementInfoText?.setVisible(false);
         this.feedbackText?.setVisible(false);
+    }
+
+    private updateResourceText() {
+        this.resourceText.setText(`Resources: ${this.resources}`);
+    }
+
+    private setSpawnWorkerButtonState(label: string, enabled: boolean) {
+        this.spawnWorkerButton.setText(label);
+
+        if (enabled) {
+            this.spawnWorkerButton
+                .setInteractive({ useHandCursor: true })
+                .setStyle({ backgroundColor: '#3366cc', color: '#ffffff' });
+        } else {
+            this.spawnWorkerButton.disableInteractive();
+            this.spawnWorkerButton.setStyle({ backgroundColor: '#555555', color: '#cccccc' });
+        }
     }
 
     private showFeedback(message: string) {
