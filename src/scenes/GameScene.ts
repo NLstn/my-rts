@@ -1992,8 +1992,9 @@ export class GameScene extends Phaser.Scene {
             this.unlockWorkerTypes(config.unlockedWorkerTypes);
         }
 
-        if ((config.passiveIncomePerMinute ?? 0) > 0) {
-            const incomePerMs = config.passiveIncomePerMinute / 60000;
+        const passiveIncome = config.passiveIncomePerMinute ?? 0;
+        if (passiveIncome > 0) {
+            const incomePerMs = passiveIncome / 60000;
             const timer = this.time.addEvent({
                 delay: 1000,
                 loop: true,
