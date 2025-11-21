@@ -135,6 +135,12 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         (this.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     }
 
+    public destroy(fromScene?: boolean) {
+        this.stopHarvesting();
+        this.stopDropOffRetry();
+        super.destroy(fromScene);
+    }
+
     public update() {
         if (this.state === WorkerState.Harvesting || this.state === WorkerState.Idle || this.state === WorkerState.Building) {
             return;
