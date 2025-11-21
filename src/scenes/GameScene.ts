@@ -65,11 +65,40 @@ interface TrainingQueueState {
     spawnPoint: Phaser.Math.Vector2;
 }
 
+interface WorkerType {
+    id: string;
+    name: string;
+    cost: number;
+    color: number;
+    description: string;
+    harvestRate?: number;
+    capacity?: number;
+    buildSpeedMultiplier?: number;
+    trainingTime?: number;
+}
+
+interface ResearchOption {
+    id: string;
+    name: string;
+    description: string;
+    cost: number;
+    duration: number;
+    requiresBuilding?: string;
+    status: 'locked' | 'available' | 'inProgress' | 'completed';
+    remainingTime?: number;
+    timer?: Phaser.Time.TimerEvent;
+    button?: Phaser.GameObjects.Text;
+    onComplete: () => void;
+}
+
+interface HarvestBonusZone {
+    center: Phaser.Math.Vector2;
+    radius: number;
+    multiplier: number;
+}
+
 export class GameScene extends Phaser.Scene {
     private resources: number = 100;
-
-    private readonly workerCost: number = 25;
-
     private populationCap: number = 8;
     private currentPopulation: number = 0;
 
@@ -99,6 +128,7 @@ export class GameScene extends Phaser.Scene {
     private trainingQueues: Map<Building, TrainingQueueState> = new Map();
     private selectedWorker?: Worker;
     private selectedBuilding?: Building;
+    private unlockedWorkerTypeIds: Set<string> = new Set(['worker']);
     private resourceNodes: ResourceNode[] = [];
     private nodeIdCounter: number = 0;
     private readonly resourceManagerConfig: ResourceManagerConfig = {
@@ -127,6 +157,20 @@ export class GameScene extends Phaser.Scene {
     private housesBuilt: number = 0;
     private storehousesBuilt: number = 0;
 
+    private carryCapacityBonus: number = 0;
+    private buildSpeedBonusMultiplier: number = 1;
+
+    private workerTypes: WorkerType[] = [];
+    private selectedWorkerTypeIndex: number = 0;
+    private workerTypeToggle!: Phaser.GameObjects.Text;
+
+    private harvestBonusZones: HarvestBonusZone[] = [];
+    private passiveIncomeTimers: Phaser.Time.TimerEvent[] = [];
+
+    private researchOptions: ResearchOption[] = [];
+    private completedResearch: Set<string> = new Set();
+    private researchStartY: number = 170;
+
     constructor() {
         super({ key: 'GameScene' });
     }
@@ -145,6 +189,8 @@ export class GameScene extends Phaser.Scene {
         this.createGrid(WORLD_WIDTH, WORLD_HEIGHT);
 
         this.buildMenuConfigs = this.createBuildMenuConfigs();
+        this.workerTypes = this.createWorkerTypes();
+        this.researchOptions = this.createResearchOptions();
 
         // UI Panel
         this.createUI();
@@ -235,6 +281,56 @@ export class GameScene extends Phaser.Scene {
             House.getConfig(),
             Storehouse.getConfig(),
             Tower.getConfig()
+        ];
+    }
+
+    private createWorkerTypes(): WorkerType[] {
+        return [
+            {
+                id: 'worker',
+                name: 'Worker',
+                cost: 25,
+                color: 0xadd8e6,
+                description: 'Generalist gatherer with balanced collection and construction.',
+                harvestRate: 5,
+                capacity: 25,
+            },
+            {
+                id: 'engineer',
+                name: 'Engineer',
+                cost: 35,
+                color: 0x9fa8da,
+                description: 'Barracks-unlocked builder that constructs faster with light harvesting.',
+                harvestRate: 4,
+                capacity: 20,
+                buildSpeedMultiplier: 1.25,
+                trainingTime: 2500,
+            },
+        ];
+    }
+
+    private createResearchOptions(): ResearchOption[] {
+        return [
+            {
+                id: 'carry-capacity',
+                name: 'Expanded Packs',
+                description: 'Workers carry +10 resources. Requires a Storehouse.',
+                cost: 60,
+                duration: 5000,
+                requiresBuilding: 'Storehouse',
+                status: 'locked',
+                onComplete: () => this.applyCarryCapacityUpgrade(10),
+            },
+            {
+                id: 'construction-drills',
+                name: 'Construction Drills',
+                description: 'Workers build 20% faster after drills at the Barracks.',
+                cost: 70,
+                duration: 5000,
+                requiresBuilding: 'Barracks',
+                status: 'locked',
+                onComplete: () => this.applyBuildSpeedUpgrade(1.2),
+            },
         ];
     }
 
@@ -462,8 +558,22 @@ export class GameScene extends Phaser.Scene {
             this.scene.start('MainMenuScene');
         });
 
-        this.spawnWorkerButton = this.add
+        this.workerTypeToggle = this.add
             .text(10, 50, '', {
+                fontSize: '15px',
+                color: '#ffffff',
+                backgroundColor: '#2e8b57',
+                padding: { x: 10, y: 4 },
+            })
+            .setScrollFactor(0)
+            .setInteractive({ useHandCursor: true });
+
+        this.workerTypeToggle.on('pointerdown', () => {
+            this.cycleWorkerType();
+        });
+
+        this.spawnWorkerButton = this.add
+            .text(10, 80, '', {
                 fontSize: '16px',
                 color: '#ffffff',
                 backgroundColor: '#3366cc',
@@ -485,7 +595,7 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.idleWorkerButton = this.add
-            .text(10, 90, 'Next Idle Worker (.)', {
+            .text(10, 120, 'Next Idle Worker (.)', {
                 fontSize: '16px',
                 color: '#ffffff',
                 backgroundColor: '#228b22',
@@ -507,7 +617,7 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.gatherNearestButton = this.add
-            .text(10, 130, 'Gather Nearest', {
+            .text(10, 160, 'Gather Nearest', {
                 fontSize: '16px',
                 color: '#ffffff',
                 backgroundColor: '#8b8b00',
@@ -529,7 +639,7 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.autoGatherButton = this.add
-            .text(10, 170, '', {
+            .text(10, 200, '', {
                 fontSize: '16px',
                 color: '#ffffff',
                 backgroundColor: '#444444',
@@ -554,7 +664,7 @@ export class GameScene extends Phaser.Scene {
         this.updateAutoGatherButtonState();
 
         this.trainingStatusText = this.add
-            .text(10, 210, '', {
+            .text(10, 240, '', {
                 fontSize: '14px',
                 color: '#ffffff',
                 backgroundColor: '#1a1a1a',
@@ -562,6 +672,10 @@ export class GameScene extends Phaser.Scene {
                 wordWrap: { width: 280 },
             })
             .setScrollFactor(0);
+
+        this.updateWorkerTypeToggle();
+        this.updateSpawnWorkerButtonLabel(true);
+        this.updateTrainingUI();
 
         this.placementInfoText = this.add
             .text(width / 2, 10, '', {
@@ -585,7 +699,217 @@ export class GameScene extends Phaser.Scene {
             .setScrollFactor(0)
             .setVisible(false);
 
-        this.updateTrainingUI();
+        this.createResearchUI();
+    }
+
+    private getAvailableWorkerTypes(): WorkerType[] {
+        return this.workerTypes.filter((type) => this.unlockedWorkerTypeIds.has(type.id));
+    }
+
+    private getSelectedWorkerType(): WorkerType {
+        const available = this.getAvailableWorkerTypes();
+        if (!available.length) {
+            return this.workerTypes[0];
+        }
+
+        if (this.selectedWorkerTypeIndex >= available.length) {
+            this.selectedWorkerTypeIndex = 0;
+        }
+
+        return available[this.selectedWorkerTypeIndex];
+    }
+
+    private cycleWorkerType() {
+        const available = this.getAvailableWorkerTypes();
+        if (!available.length) {
+            return;
+        }
+
+        this.selectedWorkerTypeIndex = (this.selectedWorkerTypeIndex + 1) % available.length;
+        this.updateWorkerTypeToggle();
+        if (!this.workerProductionTimer) {
+            this.updateSpawnWorkerButtonLabel(true);
+        }
+    }
+
+    private updateWorkerTypeToggle() {
+        const type = this.getSelectedWorkerType();
+        const availableCount = this.getAvailableWorkerTypes().length;
+        const suffix = availableCount > 1 ? ' (click to cycle)' : '';
+        this.workerTypeToggle.setText(`Training: ${type.name}${suffix}`);
+        this.workerTypeToggle.setStyle({ backgroundColor: availableCount > 1 ? '#2e8b57' : '#1f4d36' });
+    }
+
+    private updateSpawnWorkerButtonLabel(enabled: boolean) {
+        const type = this.getSelectedWorkerType();
+        const label = this.workerProductionTimer
+            ? 'Training...'
+            : `Train ${type.name} (${type.cost})`;
+        this.setSpawnWorkerButtonState(label, enabled);
+    }
+
+    private unlockWorkerTypes(typeIds: string[]) {
+        let added = false;
+
+        typeIds.forEach((id) => {
+            if (!this.unlockedWorkerTypeIds.has(id)) {
+                this.unlockedWorkerTypeIds.add(id);
+                added = true;
+            }
+        });
+
+        if (added) {
+            this.showFeedback('New worker specializations are now available.');
+            this.updateWorkerTypeToggle();
+            if (!this.workerProductionTimer) {
+                this.updateSpawnWorkerButtonLabel(true);
+            }
+        }
+    }
+
+    private createResearchUI() {
+        const { width } = this.cameras.main;
+        const startX = 10;
+        const startY = this.researchStartY;
+        const rowHeight = 60;
+
+        this.researchOptions.forEach((option, index) => {
+            const y = startY + index * rowHeight;
+            const button = this.add
+                .text(startX, y, '', {
+                    fontSize: '14px',
+                    color: '#ffffff',
+                    backgroundColor: '#5a3e85',
+                    padding: { x: 8, y: 6 },
+                    wordWrap: { width: width / 3 },
+                })
+                .setScrollFactor(0)
+                .setInteractive({ useHandCursor: true });
+
+            button.on('pointerdown', () => {
+                this.startResearch(option.id);
+            });
+
+            option.button = button;
+            this.updateResearchButton(option);
+        });
+
+        this.refreshResearchAvailability();
+    }
+
+    private refreshResearchAvailability() {
+        this.researchOptions.forEach((option) => {
+            if (option.status === 'completed' || option.status === 'inProgress') {
+                return;
+            }
+
+            if (!option.requiresBuilding) {
+                option.status = 'available';
+                this.updateResearchButton(option);
+                return;
+            }
+
+            const requirementMet = this.placedBuildings.some((building) => building.getConfig().name === option.requiresBuilding);
+            option.status = requirementMet ? 'available' : 'locked';
+            this.updateResearchButton(option);
+        });
+    }
+
+    private updateResearchButton(option: ResearchOption) {
+        if (!option.button) return;
+
+        const baseText = `${option.name} (${option.cost})\n${option.description}`;
+
+        if (option.status === 'completed') {
+            option.button.setText(`${baseText}\nCompleted`);
+            option.button.setStyle({ backgroundColor: '#2f6f3f', color: '#d3ffd3' });
+            option.button.disableInteractive();
+            return;
+        }
+
+        if (option.status === 'inProgress') {
+            const remainingSeconds = (option.remainingTime ?? 0) / 1000;
+            option.button.setText(`${baseText}\nResearching... ${remainingSeconds.toFixed(1)}s`);
+            option.button.setStyle({ backgroundColor: '#9466c4', color: '#ffffff' });
+            option.button.disableInteractive();
+            return;
+        }
+
+        if (option.status === 'available') {
+            option.button.setText(`${baseText}\nClick to research (${option.duration / 1000}s)`);
+            option.button.setStyle({ backgroundColor: '#5a3e85', color: '#ffffff' });
+            option.button.setInteractive({ useHandCursor: true });
+            return;
+        }
+
+        option.button.setText(`${baseText}\nRequires ${option.requiresBuilding}`);
+        option.button.setStyle({ backgroundColor: '#3d2b5c', color: '#bbbbbb' });
+        option.button.disableInteractive();
+    }
+
+    private startResearch(optionId: string) {
+        const option = this.researchOptions.find((candidate) => candidate.id === optionId);
+        if (!option || option.status !== 'available') return;
+
+        if (this.resources < option.cost) {
+            this.showFeedback('Not enough resources for that research.');
+            this.pulseResourceText();
+            return;
+        }
+
+        this.resources -= option.cost;
+        this.updateResourceText();
+
+        option.status = 'inProgress';
+        option.remainingTime = option.duration;
+        this.updateResearchButton(option);
+
+        option.timer = this.time.addEvent({
+            delay: 100,
+            loop: true,
+            callback: () => {
+                if (!option.remainingTime) return;
+                option.remainingTime = Math.max(0, option.remainingTime - 100);
+                this.updateResearchButton(option);
+                if (option.remainingTime <= 0) {
+                    this.completeResearch(option);
+                }
+            },
+        });
+    }
+
+    private completeResearch(option: ResearchOption) {
+        option.status = 'completed';
+        option.timer?.destroy();
+        option.remainingTime = 0;
+        this.completedResearch.add(option.id);
+        option.onComplete();
+        this.showFeedback(`${option.name} completed.`);
+        this.updateResearchButton(option);
+    }
+
+    private updateResearchProgress() {
+        this.researchOptions.forEach((option) => {
+            if (option.status === 'inProgress' && option.remainingTime !== undefined) {
+                this.updateResearchButton(option);
+            }
+        });
+    }
+
+    private applyCarryCapacityUpgrade(amount: number) {
+        this.carryCapacityBonus += amount;
+        this.workers.forEach((worker) => worker.increaseCapacity(amount));
+    }
+
+    private applyBuildSpeedUpgrade(multiplier: number) {
+        this.buildSpeedBonusMultiplier = multiplier;
+        this.workers.forEach((worker) => {
+            const typeId = worker.getData('typeId') as string | undefined;
+            const type = this.workerTypes.find((candidate) => candidate.id === typeId);
+            const baseMultiplier = type?.buildSpeedMultiplier ?? 1;
+            worker.setBuildSpeedMultiplier(baseMultiplier * this.buildSpeedBonusMultiplier);
+        });
+>>>>>>> 946f078 (Add economic bonuses and research system)
     }
 
     private initializeScenarioGoals() {
@@ -805,56 +1129,60 @@ export class GameScene extends Phaser.Scene {
             return;
         }
 
+        const type = this.getSelectedWorkerType();
+
         if (this.currentPopulation >= this.populationCap) {
             this.showFeedback('Cannot train: population cap reached.');
             this.updateTrainingUI();
             return;
         }
 
-        if (this.resources < this.workerCost) {
-            this.showFeedback('Not enough resources to train a worker.');
+        if (this.resources < type.cost) {
+            this.showFeedback(`Not enough resources to train a ${type.name}.`);
             this.pulseResourceText();
             this.updateTrainingUI();
             return;
         }
 
-        this.resources -= this.workerCost;
+        this.resources -= type.cost;
         this.updateResourceText();
 
         queue.pending += 1;
         if (!queue.activeTimer) {
-            this.beginTraining(queue);
+            this.beginTraining(queue, type);
         } else {
             this.updateTrainingUI();
         }
     }
 
-    private beginTraining(queue: TrainingQueueState) {
+    private beginTraining(queue: TrainingQueueState, type: WorkerType) {
         if (queue.pending <= 0 || queue.activeTimer) {
             return;
         }
 
         queue.pending -= 1;
-        queue.currentCompleteTime = this.time.now + this.workerProductionTimeMs;
-        queue.activeTimer = this.time.delayedCall(this.workerProductionTimeMs, () => {
-            this.completeWorkerTraining(queue);
+        const productionTime = type.trainingTime ?? this.workerProductionTimeMs;
+        queue.currentCompleteTime = this.time.now + productionTime;
+        queue.activeTimer = this.time.delayedCall(productionTime, () => {
+            this.completeWorkerTraining(queue, type);
         });
         this.updateTrainingUI();
     }
 
-    private completeWorkerTraining(queue: TrainingQueueState) {
+    private completeWorkerTraining(queue: TrainingQueueState, type: WorkerType) {
         queue.activeTimer = undefined;
         queue.currentCompleteTime = undefined;
-        this.createWorker(queue.spawnPoint);
+        this.createWorker(queue.spawnPoint, type);
         if (queue.pending > 0) {
-            this.beginTraining(queue);
+            const nextType = this.getSelectedWorkerType();
+            this.beginTraining(queue, nextType);
         } else {
             this.updateTrainingUI();
         }
     }
 
-    private createWorker(spawnPoint?: Phaser.Math.Vector2) {
-        const spawnPosition = spawnPoint ? spawnPoint.clone() : this.basePosition.clone();
+    private createWorker(spawnPoint: Phaser.Math.Vector2, type: WorkerType) {
+        const spawnPosition = spawnPoint.clone();
         const jitter = new Phaser.Math.Vector2(Phaser.Math.Between(-12, 12), Phaser.Math.Between(-12, 12));
         const worker = new Worker(
             this,
@@ -866,7 +1194,16 @@ export class GameScene extends Phaser.Scene {
             (node) => this.updateResourceLabel(node),
             (node) => this.handleResourceDepleted(node),
             (position) => this.findNearestResource(position),
+            {
+                color: type.color,
+                harvestRate: type.harvestRate,
+                capacity: (type.capacity ?? 25) + this.carryCapacityBonus,
+                buildSpeedMultiplier: (type.buildSpeedMultiplier ?? 1) * this.buildSpeedBonusMultiplier,
+                harvestMultiplierProvider: (position) => this.getHarvestMultiplier(position),
+            },
         );
+
+        worker.setData('typeId', type.id);
 
         worker.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
             if (!pointer.rightButtonDown()) {
@@ -1108,12 +1445,26 @@ export class GameScene extends Phaser.Scene {
         this.updateScenarioGoal('resources', this.resources);
     }
 
+    private getHarvestMultiplier(position: Phaser.Math.Vector2) {
+        let multiplier = 1;
+
+        this.harvestBonusZones.forEach((zone) => {
+            const distance = Phaser.Math.Distance.Between(position.x, position.y, zone.center.x, zone.center.y);
+            if (distance <= zone.radius) {
+                multiplier *= zone.multiplier;
+            }
+        });
+
+        return multiplier;
+    }
+
     update(_time: number, delta: number) {
         this.handleCameraControls(delta);
         this.workers.forEach((worker) => worker.update());
         this.updateTrainingUI();
         this.updateConstructionSites(delta);
         this.updateScenarioTimer();
+        this.updateResearchProgress();
     }
 
     private handleCameraControls(delta: number) {
@@ -1205,6 +1556,19 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
+    private updateWorkerProductionUI() {
+        if (!this.workerProductionTimer) {
+            return;
+        }
+
+        const remainingMs = Math.max(0, this.workerProductionCompleteTime - this.time.now);
+        const remainingSeconds = remainingMs / 1000;
+        const trainingType = this.workerTypes.find((type) => type.id === this.workerProductionTypeId);
+        const label = trainingType ? `Training ${trainingType.name}... ${remainingSeconds.toFixed(1)}s` : 'Training...';
+        this.setSpawnWorkerButtonState(label, false);
+    }
+
+>>>>>>> 946f078 (Add economic bonuses and research system)
     private startPlacement(config: BuildingConfig) {
         this.currentPlacement = config;
         this.feedbackText?.setVisible(false);
@@ -1550,7 +1914,8 @@ export class GameScene extends Phaser.Scene {
             const canBuild =
                 !site.requiresWorker || (site.assignedWorker && site.assignedWorker.state === WorkerState.Building);
             if (canBuild && site.remainingTime > 0) {
-                site.remainingTime = Math.max(0, site.remainingTime - delta);
+                const buildSpeedMultiplier = site.assignedWorker?.getBuildSpeedMultiplier() ?? 1;
+                site.remainingTime = Math.max(0, site.remainingTime - delta * buildSpeedMultiplier);
                 const progress = Phaser.Math.Clamp(1 - site.remainingTime / site.totalTime, 0, 1);
                 site.progressBar.width = site.config.width * progress;
                 this.updateConstructionText(site);
@@ -1648,6 +2013,33 @@ export class GameScene extends Phaser.Scene {
         if (config.providesDropOff) {
             this.addDropOffPoint(position.clone());
         }
+
+        if (config.unlockedWorkerTypes?.length) {
+            this.unlockWorkerTypes(config.unlockedWorkerTypes);
+        }
+
+        if (config.passiveIncomePerMinute && config.passiveIncomePerMinute > 0) {
+            const incomePerMs = config.passiveIncomePerMinute / 60000;
+            const timer = this.time.addEvent({
+                delay: 1000,
+                loop: true,
+                callback: () => {
+                    this.resources += Math.round(incomePerMs * 1000);
+                    this.updateResourceText();
+                },
+            });
+            this.passiveIncomeTimers.push(timer);
+        }
+
+        if (config.harvestBonus) {
+            this.harvestBonusZones.push({
+                center: position.clone(),
+                radius: config.harvestBonus.radius,
+                multiplier: config.harvestBonus.multiplier,
+            });
+        }
+
+        this.refreshResearchAvailability();
     }
 
     private pulseResourceText() {

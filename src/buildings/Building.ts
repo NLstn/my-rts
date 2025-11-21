@@ -15,6 +15,12 @@ export interface BuildingConfig {
     populationBonus?: number;
     providesDropOff?: boolean;
     canTrainWorkers?: boolean;
+    unlockedWorkerTypes?: string[];
+    passiveIncomePerMinute?: number;
+    harvestBonus?: {
+        radius: number;
+        multiplier: number;
+    };
 }
 
 export abstract class Building {

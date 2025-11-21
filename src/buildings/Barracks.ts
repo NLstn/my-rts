@@ -16,7 +16,10 @@ export class Barracks extends Building {
             cost: 50,
             type: 'military',
             buildTime: 5000,
-            description: 'Trains units and unlocks army production (placeholder).',
+            description:
+                'Trains units and unlocks engineer workers. Provides a small military stipend while standing.',
+            unlockedWorkerTypes: ['Engineer'],
+            passiveIncomePerMinute: 30,
         };
     }
 }

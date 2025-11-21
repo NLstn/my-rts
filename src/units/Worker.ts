@@ -24,10 +24,14 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     private speed: number = 140;
 
     private harvestRate: number = 5;
+    private baseHarvestRate: number = 5;
 
     private capacity: number = 25;
+    private baseCapacity: number = 25;
 
     private carried: number = 0;
+
+    private buildSpeedMultiplier: number = 1;
 
     private readonly dropOffRetryBaseDelay: number = 2000;
 
@@ -57,6 +61,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private readonly onResourceDepleted: (node: ResourceNode) => void;
 
+    private readonly harvestMultiplierProvider: (position: Phaser.Math.Vector2) => number;
+
     private buildTarget?: {
         position: Phaser.Math.Vector2;
         onArrive: () => void;
@@ -73,8 +79,15 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         onResourceUpdate: (node: ResourceNode) => void,
         onResourceDepleted: (node: ResourceNode) => void,
         findNearestResource: (position: Phaser.Math.Vector2) => ResourceNode | undefined,
+        options?: {
+            color?: number;
+            harvestRate?: number;
+            capacity?: number;
+            buildSpeedMultiplier?: number;
+            harvestMultiplierProvider?: (position: Phaser.Math.Vector2) => number;
+        },
     ) {
-        super(scene, x, y, 24, 24, 0xadd8e6, 1);
+        super(scene, x, y, 24, 24, options?.color ?? 0xadd8e6, 1);
 
         this.gridSize = gridSize;
         this.getDropOffTargets = getDropOffTargets;
@@ -82,6 +95,13 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.onResourceUpdate = onResourceUpdate;
         this.onResourceDepleted = onResourceDepleted;
         this.findNearestResource = findNearestResource;
+
+        this.harvestRate = options?.harvestRate ?? this.harvestRate;
+        this.capacity = options?.capacity ?? this.capacity;
+        this.baseHarvestRate = this.harvestRate;
+        this.baseCapacity = this.capacity;
+        this.buildSpeedMultiplier = options?.buildSpeedMultiplier ?? this.buildSpeedMultiplier;
+        this.harvestMultiplierProvider = options?.harvestMultiplierProvider ?? (() => 1);
 
         scene.add.existing(this);
         scene.physics.add.existing(this);
@@ -172,6 +192,23 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         super.destroy(fromScene);
     }
 
+    public increaseCapacity(flatAmount: number) {
+        this.capacity += flatAmount;
+    }
+
+    public setBuildSpeedMultiplier(multiplier: number) {
+        this.buildSpeedMultiplier = multiplier;
+    }
+
+    public getBuildSpeedMultiplier() {
+        return this.buildSpeedMultiplier;
+    }
+
+    public resetBaseStats() {
+        this.harvestRate = this.baseHarvestRate;
+        this.capacity = this.baseCapacity;
+    }
+
     public update() {
         if (this.state === WorkerState.Harvesting || this.state === WorkerState.Idle || this.state === WorkerState.Building) {
             return;
@@ -257,7 +294,11 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         }
 
         const availableCapacity = this.capacity - this.carried;
-        const harvested = Math.min(this.harvestRate, this.targetNode.amount, availableCapacity);
+        const harvestMultiplier = this.harvestMultiplierProvider(
+            new Phaser.Math.Vector2(this.targetNode.sprite.x, this.targetNode.sprite.y),
+        );
+        const boostedRate = Math.max(1, Math.round(this.harvestRate * harvestMultiplier));
+        const harvested = Math.min(boostedRate, this.targetNode.amount, availableCapacity);
         this.carried += harvested;
         this.targetNode.amount -= harvested;
 
