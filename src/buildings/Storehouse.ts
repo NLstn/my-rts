@@ -16,8 +16,13 @@ export class Storehouse extends Building {
             cost: 45,
             type: 'dropoff',
             buildTime: 4500,
-            description: 'Provides a nearby drop-off point for workers.',
+            description:
+                'Provides a nearby drop-off point and boosts harvesting speed for nodes within its yard.',
             providesDropOff: true,
+            harvestBonus: {
+                radius: 200,
+                multiplier: 1.25,
+            },
         };
     }
 }
