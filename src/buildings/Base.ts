@@ -11,6 +11,7 @@ export class Base extends Building {
             cost: 0,
             type: 'hq',
             buildTime: 0,
+            dropOff: true,
         };
         super(scene, config);
     }

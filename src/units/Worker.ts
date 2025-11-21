@@ -37,13 +37,13 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private readonly gridSize: number;
 
+    private readonly getDropOffTargets: () => Phaser.Math.Vector2[];
+
     private readonly onDeposit: (amount: number) => void;
 
     private readonly onResourceUpdate: (node: ResourceNode) => void;
 
     private readonly onResourceDepleted: (node: ResourceNode) => void;
-
-    private readonly getDropOffTargets: () => Phaser.Math.Vector2[];
 
     private buildTarget?: {
         position: Phaser.Math.Vector2;
@@ -56,18 +56,18 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         x: number,
         y: number,
         gridSize: number,
+        getDropOffTargets: () => Phaser.Math.Vector2[],
         onDeposit: (amount: number) => void,
         onResourceUpdate: (node: ResourceNode) => void,
         onResourceDepleted: (node: ResourceNode) => void,
-        getDropOffTargets: () => Phaser.Math.Vector2[],
     ) {
         super(scene, x, y, 24, 24, 0xadd8e6, 1);
 
         this.gridSize = gridSize;
+        this.getDropOffTargets = getDropOffTargets;
         this.onDeposit = onDeposit;
         this.onResourceUpdate = onResourceUpdate;
         this.onResourceDepleted = onResourceDepleted;
-        this.getDropOffTargets = getDropOffTargets;
 
         scene.add.existing(this);
         scene.physics.add.existing(this);

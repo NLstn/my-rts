@@ -374,10 +374,10 @@ export class GameScene extends Phaser.Scene {
             this.basePosition.x + offset,
             this.basePosition.y + offset,
             this.gridSize,
+            () => this.dropOffPoints,
             (amount) => this.depositResource(amount),
             (node) => this.updateResourceLabel(node),
             (node) => this.handleResourceDepleted(node),
-            () => this.dropOffPoints,
         );
 
         worker.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
