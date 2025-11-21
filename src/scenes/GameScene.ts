@@ -372,7 +372,7 @@ export class GameScene extends Phaser.Scene {
             // Set the interactive area to match the visual bounds (left side of button)
             buttonContainer.setInteractive(
                 new Phaser.Geom.Rectangle(-buttonWidth, 0, buttonWidth, buttonHeight),
-                Phaser.Geom.Rectangle.Contains
+                (shape: Phaser.Geom.Rectangle, x: number, y: number) => Phaser.Geom.Rectangle.Contains(shape, x, y)
             );
 
             buttonContainer.on('pointerover', () => {
