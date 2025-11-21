@@ -35,6 +35,10 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private targetNode?: ResourceNode;
 
+    private readonly findNearestResource: (position: Phaser.Math.Vector2) => ResourceNode | undefined;
+
+    private autoGatherEnabled: boolean = false;
+
     private waypoints: Phaser.Math.Vector2[] = [];
 
     private harvestTimer?: Phaser.Time.TimerEvent;
@@ -68,6 +72,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         onDeposit: (amount: number) => void,
         onResourceUpdate: (node: ResourceNode) => void,
         onResourceDepleted: (node: ResourceNode) => void,
+        findNearestResource: (position: Phaser.Math.Vector2) => ResourceNode | undefined,
     ) {
         super(scene, x, y, 24, 24, 0xadd8e6, 1);
 
@@ -76,6 +81,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.onDeposit = onDeposit;
         this.onResourceUpdate = onResourceUpdate;
         this.onResourceDepleted = onResourceDepleted;
+        this.findNearestResource = findNearestResource;
 
         scene.add.existing(this);
         scene.physics.add.existing(this);
@@ -127,6 +133,27 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.updateState(WorkerState.Idle);
         this.waypoints = [];
         (this.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+    }
+
+    public setAutoGatherEnabled(enabled: boolean) {
+        this.autoGatherEnabled = enabled;
+        if (enabled) {
+            this.tryAutoGather();
+        }
+    }
+
+    public gatherNearestAvailable(): boolean {
+        if (this.buildTarget) {
+            return false;
+        }
+
+        const nearest = this.findNearestResource(new Phaser.Math.Vector2(this.x, this.y));
+        if (!nearest) {
+            return false;
+        }
+
+        this.assignResource(nearest);
+        return true;
     }
 
     public cancelConstructionAssignment() {
@@ -261,8 +288,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         if (this.carried > 0) {
             this.returnToBase();
         } else {
-            this.updateState(WorkerState.Idle);
             this.targetNode = undefined;
+            this.updateState(WorkerState.Idle);
         }
     }
 
@@ -304,8 +331,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
             this.onDeposit(this.carried);
         }
         this.carried = 0;
-        this.updateState(WorkerState.Idle);
         this.targetNode = undefined;
+        this.updateState(WorkerState.Idle);
         this.stopDropOffRetry();
     }
 
@@ -364,6 +391,23 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.dropOffRetryCount = 0;
     }
 
+    private tryAutoGather() {
+        if (!this.autoGatherEnabled) {
+            return;
+        }
+
+        if (this.state !== WorkerState.Idle || this.buildTarget) {
+            return;
+        }
+
+        if (this.carried > 0) {
+            // Preserve drop-off behavior; don't gather while holding resources.
+            return;
+        }
+
+        this.gatherNearestAvailable();
+    }
+
     private clearBuildTarget() {
         this.buildTarget = undefined;
         if (this.state === WorkerState.MovingToBuild || this.state === WorkerState.Building) {
@@ -379,6 +423,10 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         const previousState = this.state;
         this.state = nextState;
         this.emit('stateChanged', nextState, previousState);
+
+        if (nextState === WorkerState.Idle) {
+            this.tryAutoGather();
+        }
     }
 
     private buildPathTo(x: number, y: number) {

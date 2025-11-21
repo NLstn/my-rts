@@ -49,6 +49,8 @@ export class GameScene extends Phaser.Scene {
     private populationText!: Phaser.GameObjects.Text;
     private spawnWorkerButton!: Phaser.GameObjects.Text;
     private idleWorkerButton!: Phaser.GameObjects.Text;
+    private gatherNearestButton!: Phaser.GameObjects.Text;
+    private autoGatherButton!: Phaser.GameObjects.Text;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
     private zoomKeys!: Record<'Q' | 'E', Phaser.Input.Keyboard.Key>;
@@ -71,6 +73,7 @@ export class GameScene extends Phaser.Scene {
     private workerProductionTimer?: Phaser.Time.TimerEvent;
     private workerProductionCompleteTime: number = 0;
     private readonly workerProductionTimeMs = 2000;
+    private autoGatherEnabled: boolean = false;
 
     constructor() {
         super({ key: 'GameScene' });
@@ -337,6 +340,53 @@ export class GameScene extends Phaser.Scene {
             this.selectNextIdleWorker();
         });
 
+        this.gatherNearestButton = this.add
+            .text(10, 130, 'Gather Nearest', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#8b8b00',
+                padding: { x: 10, y: 5 },
+            })
+            .setScrollFactor(0)
+            .setInteractive({ useHandCursor: true });
+
+        this.gatherNearestButton.on('pointerover', () => {
+            this.gatherNearestButton.setStyle({ backgroundColor: '#a3a300' });
+        });
+
+        this.gatherNearestButton.on('pointerout', () => {
+            this.gatherNearestButton.setStyle({ backgroundColor: '#8b8b00' });
+        });
+
+        this.gatherNearestButton.on('pointerdown', () => {
+            this.commandGatherNearest();
+        });
+
+        this.autoGatherButton = this.add
+            .text(10, 170, '', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#444444',
+                padding: { x: 10, y: 5 },
+            })
+            .setScrollFactor(0)
+            .setInteractive({ useHandCursor: true });
+
+        this.autoGatherButton.on('pointerover', () => {
+            const highlightColor = this.autoGatherEnabled ? '#6bbd42' : '#5a5a5a';
+            this.autoGatherButton.setStyle({ backgroundColor: highlightColor });
+        });
+
+        this.autoGatherButton.on('pointerout', () => {
+            this.updateAutoGatherButtonState();
+        });
+
+        this.autoGatherButton.on('pointerdown', () => {
+            this.toggleAutoGather();
+        });
+
+        this.updateAutoGatherButtonState();
+
         this.placementInfoText = this.add
             .text(width / 2, 10, '', {
                 fontSize: '16px',
@@ -406,6 +456,7 @@ export class GameScene extends Phaser.Scene {
             (amount) => this.depositResource(amount),
             (node) => this.updateResourceLabel(node),
             (node) => this.handleResourceDepleted(node),
+            (position) => this.findNearestResource(position),
         );
 
         worker.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -418,6 +469,7 @@ export class GameScene extends Phaser.Scene {
         this.currentPopulation += 1;
         this.updatePopulationText();
         this.trackWorker(worker);
+        worker.setAutoGatherEnabled(this.autoGatherEnabled);
         this.selectWorker(worker);
     }
 
@@ -455,6 +507,38 @@ export class GameScene extends Phaser.Scene {
 
         this.selectWorker(worker);
         this.centerCameraOn(worker.x, worker.y);
+    }
+
+    private commandGatherNearest() {
+        if (!this.selectedWorker) {
+            this.showFeedback('Select a worker to gather.');
+            return;
+        }
+
+        const success = this.selectedWorker.gatherNearestAvailable();
+        if (!success) {
+            this.showFeedback('No available resource nodes to gather.');
+        }
+    }
+
+    private toggleAutoGather() {
+        this.autoGatherEnabled = !this.autoGatherEnabled;
+        this.applyAutoGatherState();
+    }
+
+    private applyAutoGatherState() {
+        this.updateAutoGatherButtonState();
+        this.workers.forEach((worker) => worker.setAutoGatherEnabled(this.autoGatherEnabled));
+    }
+
+    private updateAutoGatherButtonState() {
+        const backgroundColor = this.autoGatherEnabled ? '#5f9e3c' : '#444444';
+        const label = this.autoGatherEnabled ? 'Auto-Gather: ON' : 'Auto-Gather: OFF';
+
+        if (this.autoGatherButton) {
+            this.autoGatherButton.setText(label);
+            this.autoGatherButton.setStyle({ backgroundColor });
+        }
     }
 
     private centerCameraOn(x: number, y: number) {
@@ -510,6 +594,25 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.resourceNodes.push(node);
+    }
+
+    private findNearestResource(position: Phaser.Math.Vector2): ResourceNode | undefined {
+        let nearest: ResourceNode | undefined;
+        let shortest = Number.POSITIVE_INFINITY;
+
+        this.resourceNodes.forEach((node) => {
+            if (node.amount <= 0) {
+                return;
+            }
+
+            const distance = Phaser.Math.Distance.Between(position.x, position.y, node.sprite.x, node.sprite.y);
+            if (distance < shortest) {
+                shortest = distance;
+                nearest = node;
+            }
+        });
+
+        return nearest;
     }
 
     private updateResourceLabel(node: ResourceNode) {
