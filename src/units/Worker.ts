@@ -12,6 +12,7 @@ export type WorkerStateType = typeof WorkerState[keyof typeof WorkerState];
 export interface ResourceNode {
     id: number;
     sprite: Phaser.GameObjects.Arc;
+    label: Phaser.GameObjects.Text;
     amount: number;
 }
 
@@ -38,6 +39,10 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private readonly onDeposit: (amount: number) => void;
 
+    private readonly onResourceUpdate: (node: ResourceNode) => void;
+
+    private readonly onResourceDepleted: (node: ResourceNode) => void;
+
     constructor(
         scene: Phaser.Scene,
         x: number,
@@ -45,12 +50,16 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         basePosition: Phaser.Math.Vector2,
         gridSize: number,
         onDeposit: (amount: number) => void,
+        onResourceUpdate: (node: ResourceNode) => void,
+        onResourceDepleted: (node: ResourceNode) => void,
     ) {
         super(scene, x, y, 24, 24, 0xadd8e6, 1);
 
         this.basePosition = basePosition.clone();
         this.gridSize = gridSize;
         this.onDeposit = onDeposit;
+        this.onResourceUpdate = onResourceUpdate;
+        this.onResourceDepleted = onResourceDepleted;
 
         scene.add.existing(this);
         scene.physics.add.existing(this);
@@ -164,13 +173,35 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.carried += harvested;
         this.targetNode.amount -= harvested;
 
+        this.onResourceUpdate(this.targetNode);
+
         if (this.targetNode.amount <= 0) {
             this.targetNode.sprite.setFillStyle(0x777755);
+            this.onResourceDepleted(this.targetNode);
         }
 
         if (this.carried >= this.capacity || this.targetNode.amount <= 0) {
             this.stopHarvesting();
             this.returnToBase();
+        }
+    }
+
+    public handleDepletedNode(node: ResourceNode) {
+        if (!this.targetNode || this.targetNode.id !== node.id) {
+            return;
+        }
+
+        this.stopHarvesting();
+
+        const body = this.body as Phaser.Physics.Arcade.Body;
+        body.setVelocity(0, 0);
+        this.waypoints = [];
+
+        if (this.carried > 0) {
+            this.returnToBase();
+        } else {
+            this.state = WorkerState.Idle;
+            this.targetNode = undefined;
         }
     }
 
@@ -195,7 +226,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         }
 
         if (this.targetNode) {
-            this.targetNode.sprite.setFillStyle(0xffd700);
+            const fillColor = this.targetNode.amount <= 0 ? 0x777755 : 0xffd700;
+            this.targetNode.sprite.setFillStyle(fillColor);
         }
     }
 
