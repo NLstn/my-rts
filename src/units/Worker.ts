@@ -271,7 +271,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         const nearestDropOff = this.findNearestDropOff();
         if (nearestDropOff) {
             this.buildPathTo(nearestDropOff.x, nearestDropOff.y);
-            this.dropOffRetryCount = 0;
+            this.stopDropOffRetry();
         } else {
             this.updateState(WorkerState.Idle);
             this.scheduleDropOffRetry();
@@ -337,6 +337,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.dropOffRetryTimer = this.scene.time.addEvent({
             delay,
             callback: () => {
+                // Re-check conditions as worker state may have changed since scheduling
                 if (this.shouldAttemptDropOff()) {
                     this.returnToBase();
                 }
@@ -345,6 +346,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     }
 
     private shouldAttemptDropOff(): boolean {
+        // Only attempt drop-off when idle to avoid interfering with other tasks.
+        // Workers transition to Idle when no drop-off is found (see returnToBase).
         return this.carried > 0 && this.state === WorkerState.Idle;
     }
 
