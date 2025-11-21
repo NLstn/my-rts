@@ -11,6 +11,7 @@ export class Barracks extends Building {
             cost: 50,
             type: 'military',
             buildTime: 5000,
+            description: 'Trains units and unlocks army production (placeholder).',
         };
         super(scene, config);
     }

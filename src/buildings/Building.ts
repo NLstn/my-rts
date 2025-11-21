@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-export type BuildingType = 'hq' | 'military' | 'utility';
+export type BuildingType = 'hq' | 'military' | 'utility' | 'housing' | 'defense' | 'dropoff';
 
 export interface BuildingConfig {
     name: string;
@@ -11,6 +11,9 @@ export interface BuildingConfig {
     type: BuildingType;
     buildTime: number;
     populationCapIncrease?: number;
+    description?: string;
+    populationBonus?: number;
+    providesDropOff?: boolean;
 }
 
 export abstract class Building {

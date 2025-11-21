@@ -35,8 +35,6 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private harvestTimer?: Phaser.Time.TimerEvent;
 
-    private basePosition: Phaser.Math.Vector2;
-
     private readonly gridSize: number;
 
     private readonly onDeposit: (amount: number) => void;
@@ -44,6 +42,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     private readonly onResourceUpdate: (node: ResourceNode) => void;
 
     private readonly onResourceDepleted: (node: ResourceNode) => void;
+
+    private readonly getDropOffTargets: () => Phaser.Math.Vector2[];
 
     private buildTarget?: {
         position: Phaser.Math.Vector2;
@@ -55,19 +55,19 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         scene: Phaser.Scene,
         x: number,
         y: number,
-        basePosition: Phaser.Math.Vector2,
         gridSize: number,
         onDeposit: (amount: number) => void,
         onResourceUpdate: (node: ResourceNode) => void,
         onResourceDepleted: (node: ResourceNode) => void,
+        getDropOffTargets: () => Phaser.Math.Vector2[],
     ) {
         super(scene, x, y, 24, 24, 0xadd8e6, 1);
 
-        this.basePosition = basePosition.clone();
         this.gridSize = gridSize;
         this.onDeposit = onDeposit;
         this.onResourceUpdate = onResourceUpdate;
         this.onResourceDepleted = onResourceDepleted;
+        this.getDropOffTargets = getDropOffTargets;
 
         scene.add.existing(this);
         scene.physics.add.existing(this);
@@ -251,7 +251,32 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private returnToBase() {
         this.state = WorkerState.Returning;
-        this.buildPathTo(this.basePosition.x, this.basePosition.y);
+        const nearestDropOff = this.findNearestDropOff();
+        if (nearestDropOff) {
+            this.buildPathTo(nearestDropOff.x, nearestDropOff.y);
+        } else {
+            this.state = WorkerState.Idle;
+        }
+    }
+
+    private findNearestDropOff(): Phaser.Math.Vector2 | undefined {
+        const dropOffTargets = this.getDropOffTargets();
+        if (!dropOffTargets.length) {
+            return undefined;
+        }
+
+        let nearest: Phaser.Math.Vector2 | undefined;
+        let shortest = Number.POSITIVE_INFINITY;
+
+        dropOffTargets.forEach((target) => {
+            const distance = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+            if (distance < shortest) {
+                shortest = distance;
+                nearest = target;
+            }
+        });
+
+        return nearest;
     }
 
     private depositResources() {
