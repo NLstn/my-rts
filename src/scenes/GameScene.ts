@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Building, type BuildingConfig } from '../buildings/Building';
 import { Barracks } from '../buildings/Barracks';
 import { Base } from '../buildings/Base';
+import { type ResourceNode, Worker } from '../units/Worker';
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
@@ -14,6 +15,7 @@ const ZOOM_STEP = 0.0015;
 
 export class GameScene extends Phaser.Scene {
     private resources: number = 100;
+
     private resourceText!: Phaser.GameObjects.Text;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
@@ -23,6 +25,11 @@ export class GameScene extends Phaser.Scene {
     private feedbackText?: Phaser.GameObjects.Text;
     private currentPlacement?: BuildingConfig;
     private placedBuildings: Building[] = [];
+    private basePosition: Phaser.Math.Vector2 = new Phaser.Math.Vector2(200, 200);
+    private workers: Worker[] = [];
+    private selectedWorker?: Worker;
+    private resourceNodes: ResourceNode[] = [];
+    private nodeIdCounter: number = 0;
 
     constructor() {
         super({ key: 'GameScene' });
@@ -32,6 +39,8 @@ export class GameScene extends Phaser.Scene {
         const { height } = this.scale;
 
         this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+        this.input.mouse?.disableContextMenu();
 
         // Background
         this.add.rectangle(0, 0, WORLD_WIDTH, WORLD_HEIGHT, 0x228b22).setOrigin(0);
@@ -44,7 +53,7 @@ export class GameScene extends Phaser.Scene {
 
         // Sample base building
         const baseBuilding = new Base(this);
-        baseBuilding.create(200, 200);
+        baseBuilding.create(this.basePosition.x, this.basePosition.y);
         this.placedBuildings.push(baseBuilding);
 
         // Sample resource nodes
@@ -78,7 +87,7 @@ export class GameScene extends Phaser.Scene {
 
         // Instructions
         this.add
-            .text(10, height - 30, 'Left-click to place | Right-click to cancel | Collect resources to expand', {
+            .text(10, height - 30, 'Left-click to place | Right-click for workers | Use build button or spawn workers', {
                 fontSize: '14px',
                 color: '#ffffff',
                 backgroundColor: '#000000',
@@ -104,6 +113,12 @@ export class GameScene extends Phaser.Scene {
                 Phaser.Math.Clamp(camera.scrollX, 0, maxScrollX),
                 Phaser.Math.Clamp(camera.scrollY, 0, maxScrollY),
             );
+        });
+
+        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (pointer.rightButtonDown()) {
+                this.handleCommand(pointer.worldX, pointer.worldY);
+            }
         });
     }
 
@@ -175,6 +190,28 @@ export class GameScene extends Phaser.Scene {
             this.scene.start('MainMenuScene');
         });
 
+        const spawnWorkerButton = this.add
+            .text(10, 50, 'Spawn Worker', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#3366cc',
+                padding: { x: 10, y: 5 },
+            })
+            .setScrollFactor(0)
+            .setInteractive({ useHandCursor: true });
+
+        spawnWorkerButton.on('pointerover', () => {
+            spawnWorkerButton.setStyle({ backgroundColor: '#3355aa' });
+        });
+
+        spawnWorkerButton.on('pointerout', () => {
+            spawnWorkerButton.setStyle({ backgroundColor: '#3366cc' });
+        });
+
+        spawnWorkerButton.on('pointerdown', () => {
+            this.spawnWorker();
+        });
+
         this.placementInfoText = this.add
             .text(width / 2, 10, '', {
                 fontSize: '16px',
@@ -198,34 +235,74 @@ export class GameScene extends Phaser.Scene {
             .setVisible(false);
     }
 
+    private spawnWorker() {
+        const offset = 30 + this.workers.length * 10;
+        const worker = new Worker(
+            this,
+            this.basePosition.x + offset,
+            this.basePosition.y + offset,
+            this.basePosition,
+            this.gridSize,
+            (amount) => this.depositResource(amount),
+        );
+
+        worker.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (!pointer.rightButtonDown()) {
+                this.selectWorker(worker);
+            }
+        });
+
+        this.workers.push(worker);
+        this.selectWorker(worker);
+    }
+
+    private selectWorker(worker: Worker) {
+        this.selectedWorker?.setSelected(false);
+        this.selectedWorker = worker;
+        this.selectedWorker.setSelected(true);
+    }
+
+    private handleCommand(worldX: number, worldY: number) {
+        if (!this.selectedWorker) return;
+
+        const targetNode = this.resourceNodes.find((node) => node.sprite.getBounds().contains(worldX, worldY));
+
+        if (targetNode) {
+            this.selectedWorker.assignResource(targetNode);
+            return;
+        }
+
+        this.selectedWorker.moveTo(new Phaser.Math.Vector2(worldX, worldY));
+    }
+
     private createResourceNode(x: number, y: number) {
         const resource = this.add.circle(x, y, 20, 0xffd700);
         resource.setStrokeStyle(2, 0xffff00);
         resource.setInteractive({ useHandCursor: true });
 
-        resource.on('pointerdown', () => {
-            this.collectResource(resource);
+        const node: ResourceNode = {
+            id: this.nodeIdCounter++,
+            sprite: resource,
+            amount: 100,
+        };
+
+        resource.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (pointer.rightButtonDown() && this.selectedWorker) {
+                this.selectedWorker.assignResource(node);
+            }
         });
+
+        this.resourceNodes.push(node);
     }
 
-    private collectResource(resource: Phaser.GameObjects.Arc) {
-        this.resources += 10;
+    private depositResource(amount: number) {
+        this.resources += amount;
         this.resourceText.setText(`Resources: ${this.resources}`);
-
-        // Visual feedback
-        this.tweens.add({
-            targets: resource,
-            alpha: 0,
-            scale: 1.5,
-            duration: 300,
-            onComplete: () => {
-                resource.destroy();
-            },
-        });
     }
 
     update(_time: number, delta: number) {
         this.handleCameraControls(delta);
+        this.workers.forEach((worker) => worker.update());
     }
 
     private handleCameraControls(delta: number) {
