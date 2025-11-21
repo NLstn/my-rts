@@ -58,12 +58,13 @@ export class GameScene extends Phaser.Scene {
 
         // Resource display
         this.resourceText = this.add
-            .text(width - 150, 10, `Resources: ${this.resources}`, {
+            .text(width - 10, 10, `Resources: ${this.resources}`, {
                 fontSize: '20px',
                 color: '#ffff00',
                 backgroundColor: '#000000',
                 padding: { x: 10, y: 5 },
             })
+            .setOrigin(1, 0)
             .setScrollFactor(0);
 
         // Back to menu button
