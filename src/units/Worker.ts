@@ -24,10 +24,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     private speed: number = 140;
 
     private harvestRate: number = 5;
-    private baseHarvestRate: number = 5;
 
     private capacity: number = 25;
-    private baseCapacity: number = 25;
 
     private carried: number = 0;
 
@@ -98,8 +96,6 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
         this.harvestRate = options?.harvestRate ?? this.harvestRate;
         this.capacity = options?.capacity ?? this.capacity;
-        this.baseHarvestRate = this.harvestRate;
-        this.baseCapacity = this.capacity;
         this.buildSpeedMultiplier = options?.buildSpeedMultiplier ?? this.buildSpeedMultiplier;
         this.harvestMultiplierProvider = options?.harvestMultiplierProvider ?? (() => 1);
 
