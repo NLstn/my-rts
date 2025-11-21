@@ -10,6 +10,7 @@ export interface BuildingConfig {
     cost: number;
     type: BuildingType;
     buildTime: number;
+    populationCapIncrease?: number;
 }
 
 export abstract class Building {

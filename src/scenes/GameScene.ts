@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Building, type BuildingConfig } from '../buildings/Building';
 import { Barracks } from '../buildings/Barracks';
 import { Base } from '../buildings/Base';
+import { House } from '../buildings/House';
 import { type ResourceNode, Worker, WorkerState } from '../units/Worker';
 
 const WORLD_WIDTH = 2000;
@@ -38,10 +39,11 @@ export class GameScene extends Phaser.Scene {
 
     private readonly workerCost: number = 25;
 
-    private readonly populationCap?: number = 8;
+    private populationCap: number = 8;
 
     private resourceText!: Phaser.GameObjects.Text;
     private spawnWorkerButton!: Phaser.GameObjects.Text;
+    private populationText!: Phaser.GameObjects.Text;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
     private readonly gridSize = 50;
@@ -178,11 +180,25 @@ export class GameScene extends Phaser.Scene {
             .setOrigin(1, 0)
             .setScrollFactor(0);
 
+        this.populationText = this.add
+            .text(width - 10, 40, '', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#333333',
+                padding: { x: 8, y: 4 },
+            })
+            .setOrigin(1, 0)
+            .setScrollFactor(0);
+
+        this.updatePopulationText();
+
         const barracks = new Barracks(this);
         const barracksConfig = barracks.getConfig();
+        const house = new House(this);
+        const houseConfig = house.getConfig();
 
-        const buildButton = this.add
-            .text(width - 10, 40, `Build ${barracksConfig.name} (${barracksConfig.cost})`, {
+        const houseButton = this.add
+            .text(width - 10, 70, `Build ${houseConfig.name} (${houseConfig.cost})`, {
                 fontSize: '16px',
                 color: '#ffffff',
                 backgroundColor: '#0066cc',
@@ -192,7 +208,22 @@ export class GameScene extends Phaser.Scene {
             .setScrollFactor(0)
             .setInteractive({ useHandCursor: true });
 
-        buildButton.on('pointerdown', () => {
+        houseButton.on('pointerdown', () => {
+            this.startPlacement(houseConfig);
+        });
+
+        const barracksButton = this.add
+            .text(width - 10, 100, `Build ${barracksConfig.name} (${barracksConfig.cost})`, {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#004d99',
+                padding: { x: 10, y: 5 },
+            })
+            .setOrigin(1, 0)
+            .setScrollFactor(0)
+            .setInteractive({ useHandCursor: true });
+
+        barracksButton.on('pointerdown', () => {
             this.startPlacement(barracksConfig);
         });
 
@@ -272,7 +303,7 @@ export class GameScene extends Phaser.Scene {
             return;
         }
 
-        if (this.populationCap !== undefined && this.workers.length >= this.populationCap) {
+        if (this.workers.length >= this.populationCap) {
             this.showFeedback('Cannot train: population cap reached.');
             return;
         }
@@ -321,6 +352,7 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.workers.push(worker);
+        this.updatePopulationText();
         this.selectWorker(worker);
     }
 
@@ -628,6 +660,10 @@ export class GameScene extends Phaser.Scene {
         this.resourceText.setText(`Resources: ${this.resources}`);
     }
 
+    private updatePopulationText() {
+        this.populationText.setText(`Population: ${this.workers.length}/${this.populationCap}`);
+    }
+
     private setSpawnWorkerButtonState(label: string, enabled: boolean) {
         this.spawnWorkerButton.setText(label);
 
@@ -784,7 +820,7 @@ export class GameScene extends Phaser.Scene {
         site.container.destroy();
         site.assignedWorker?.releaseFromConstruction();
         this.resources += site.config.cost;
-        this.resourceText.setText(`Resources: ${this.resources}`);
+        this.updateResourceText();
         this.showFeedback('Construction cancelled. Resources refunded.');
     }
 
@@ -796,6 +832,7 @@ export class GameScene extends Phaser.Scene {
         building.create(site.position.x, site.position.y);
         this.placedBuildings.push(building);
         site.assignedWorker?.releaseFromConstruction();
+        this.applyConstructionRewards(site.config);
         this.showFeedback(`${site.config.name} completed.`);
     }
 
@@ -806,6 +843,10 @@ export class GameScene extends Phaser.Scene {
 
         if (config.name === 'Base') {
             return new Base(this);
+        }
+
+        if (config.name === 'House') {
+            return new House(this);
         }
 
         return new Barracks(this);
@@ -819,5 +860,13 @@ export class GameScene extends Phaser.Scene {
             yoyo: true,
             repeat: 2,
         });
+    }
+
+    private applyConstructionRewards(config: BuildingConfig) {
+        if (config.populationCapIncrease) {
+            this.populationCap += config.populationCapIncrease;
+        }
+
+        this.updatePopulationText();
     }
 }
