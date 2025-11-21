@@ -9,6 +9,7 @@ import { ResourceManager, type ResourceManagerConfig, RESOURCE_CONFIGS } from '.
 import { type ResourceType, type WorkerStateType, Worker, WorkerState } from '../units/Worker';
 import { TrainingManager } from '../services/TrainingManager';
 import { type WorkerType } from '../types/WorkerType';
+import { UIManager, type ResearchOption } from '../ui/UIManager';
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
@@ -50,20 +51,6 @@ interface ScenarioGoal {
     completed: boolean;
 }
 
-interface ResearchOption {
-    id: string;
-    name: string;
-    description: string;
-    cost: number;
-    duration: number;
-    requiresBuilding?: string;
-    status: 'locked' | 'available' | 'inProgress' | 'completed';
-    remainingTime?: number;
-    timer?: Phaser.Time.TimerEvent;
-    button?: Phaser.GameObjects.Text;
-    onComplete: () => void;
-}
-
 interface HarvestBonusZone {
     center: Phaser.Math.Vector2;
     radius: number;
@@ -80,20 +67,11 @@ export class GameScene extends Phaser.Scene {
     private populationCap: number = 8;
     private currentPopulation: number = 0;
 
-    private resourceText!: Phaser.GameObjects.Text;
-    private populationText!: Phaser.GameObjects.Text;
-    private spawnWorkerButton!: Phaser.GameObjects.Text;
-    private trainingStatusText!: Phaser.GameObjects.Text;
-    private idleWorkerButton!: Phaser.GameObjects.Text;
-    private gatherNearestButton!: Phaser.GameObjects.Text;
-    private autoGatherButton!: Phaser.GameObjects.Text;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
     private zoomKeys!: Record<'Q' | 'E', Phaser.Input.Keyboard.Key>;
     private readonly gridSize = 50;
     private placementPreview?: Phaser.GameObjects.Rectangle;
-    private placementInfoText?: Phaser.GameObjects.Text;
-    private feedbackText?: Phaser.GameObjects.Text;
     private currentPlacement?: BuildingConfig;
     private placedBuildings: Building[] = [];
     private constructionSites: ConstructionSite[] = [];
@@ -138,14 +116,12 @@ export class GameScene extends Phaser.Scene {
 
     private workerTypes: WorkerType[] = [];
     private selectedWorkerTypeIndex: number = 0;
-    private workerTypeToggle!: Phaser.GameObjects.Text;
-
     private harvestBonusZones: HarvestBonusZone[] = [];
     private passiveIncomeTimers: Phaser.Time.TimerEvent[] = [];
 
     private researchOptions: ResearchOption[] = [];
     private completedResearch: Set<string> = new Set();
-    private researchStartY: number = 170;
+    private uiManager!: UIManager;
 
     constructor() {
         super({ key: 'GameScene' });
@@ -169,8 +145,22 @@ export class GameScene extends Phaser.Scene {
         this.researchOptions = this.createResearchOptions();
         this.trainingManager = this.createTrainingManager();
 
-        // UI Panel
-        this.createUI();
+        this.uiManager = new UIManager(this, {
+            onMainMenu: () => this.scene.start('MainMenuScene'),
+            onStartPlacement: (config) => this.startPlacement(config),
+            onQueueTraining: () => this.queueWorkerTraining(),
+            onSelectNextIdleWorker: () => this.selectNextIdleWorker(),
+            onGatherNearest: () => this.commandGatherNearest(),
+            onToggleAutoGather: () => this.toggleAutoGather(),
+            onCycleWorkerType: () => this.cycleWorkerType(),
+            onStartResearch: (id) => this.startResearch(id),
+        });
+        this.uiManager.createHUD(this.buildMenuConfigs, this.researchOptions);
+        this.uiManager.updateResourceTotals(this.resourceTotals);
+        this.uiManager.updatePopulation(this.currentPopulation, this.populationCap);
+        this.updateWorkerTypeToggle();
+        this.updateTrainingUI();
+        this.updateAutoGatherButtonState();
 
         // Sample base building
         const baseBuilding = new Base(this);
@@ -358,71 +348,8 @@ export class GameScene extends Phaser.Scene {
         ];
     }
 
-    private getPopulationLabel() {
-        return `Population: ${this.currentPopulation}/${this.populationCap}`;
-    }
-
-    private getResourcePanelText() {
-        return [
-            'Resources',
-            `Wood: ${this.resourceTotals.wood}`,
-            `Stone: ${this.resourceTotals.stone}`,
-            `Food: ${this.resourceTotals.food}`,
-        ].join('\n');
-    }
-
     private hasSufficientResource(type: ResourceType, amount: number) {
         return this.resourceTotals[type] >= amount;
-    }
-
-    private createBuildMenu(anchorX: number, startY: number) {
-        const spacing = 48;
-        const buttonWidth = 240;
-        const buttonHeight = 40;
-
-        this.buildMenuConfigs.forEach((config, index) => {
-            const y = startY + index * spacing;
-            const buttonContainer = this.add.container(anchorX, y).setScrollFactor(0).setDepth(1000);
-
-            const background = this.add
-                .rectangle(0, 0, buttonWidth, buttonHeight, 0x004c99, 1)
-                .setOrigin(1, 0)
-                .setStrokeStyle(2, 0x003366);
-            const label = this.add
-                .text(-10, 8, `${config.name} (${config.cost})`, {
-                    fontSize: '14px',
-                    color: '#ffffff',
-                })
-                .setOrigin(1, 0);
-            const preview = this.add.rectangle(-buttonWidth + 30, 20, 24, 24, config.color, 1).setOrigin(0.5);
-            const description = this.add
-                .text(-buttonWidth + 52, 8, config.description ?? 'No description', {
-                    fontSize: '11px',
-                    color: '#cce6ff',
-                    wordWrap: { width: 150 },
-                })
-                .setOrigin(0, 0);
-
-            buttonContainer.add([background, preview, label, description]);
-
-            // Set the interactive area to match the visual bounds (left side of button)
-            buttonContainer.setInteractive(
-                new Phaser.Geom.Rectangle(-buttonWidth, 0, buttonWidth, buttonHeight),
-                (shape: Phaser.Geom.Rectangle, x: number, y: number) => Phaser.Geom.Rectangle.Contains(shape, x, y)
-            );
-
-            buttonContainer.on('pointerover', () => {
-                background.setFillStyle(0x005fb3);
-            });
-
-            buttonContainer.on('pointerout', () => {
-                background.setFillStyle(0x004c99);
-            });
-
-            buttonContainer.on('pointerdown', () => {
-                this.startPlacement(config);
-            });
-        });
     }
 
     private addDropOffPoint(position: Phaser.Math.Vector2) {
@@ -434,205 +361,6 @@ export class GameScene extends Phaser.Scene {
         this.dropOffMarkers.push(marker);
     }
 
-
-    private createUI() {
-        const { width } = this.cameras.main;
-
-        // Resource display
-        this.resourceText = this.add
-            .text(width - 10, 10, this.getResourcePanelText(), {
-                fontSize: '18px',
-                color: '#ffff00',
-                backgroundColor: '#000000',
-                padding: { x: 10, y: 5 },
-                lineSpacing: 4,
-            })
-            .setOrigin(1, 0)
-            .setScrollFactor(0)
-            .setDepth(1000);
-
-        this.populationText = this.add
-            .text(width - 10, 40, this.getPopulationLabel(), {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#000000',
-                padding: { x: 8, y: 4 },
-            })
-            .setOrigin(1, 0)
-            .setScrollFactor(0)
-            .setDepth(1000);
-
-        this.createBuildMenu(width - 10, 70);
-
-        // Back to menu button
-        const menuButton = this.add
-            .text(10, 10, 'Main Menu', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#333333',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setDepth(1000)
-            .setInteractive({ useHandCursor: true });
-
-        menuButton.on('pointerover', () => {
-            menuButton.setStyle({ backgroundColor: '#555555' });
-        });
-
-        menuButton.on('pointerout', () => {
-            menuButton.setStyle({ backgroundColor: '#333333' });
-        });
-
-        menuButton.on('pointerdown', () => {
-            this.scene.start('MainMenuScene');
-        });
-
-        this.workerTypeToggle = this.add
-            .text(10, 50, '', {
-                fontSize: '15px',
-                color: '#ffffff',
-                backgroundColor: '#2e8b57',
-                padding: { x: 10, y: 4 },
-            })
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
-
-        this.workerTypeToggle.on('pointerdown', () => {
-            this.cycleWorkerType();
-        });
-
-        this.spawnWorkerButton = this.add
-            .text(10, 80, '', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#3366cc',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setDepth(1000)
-            .setInteractive({ useHandCursor: true });
-
-        this.spawnWorkerButton.on('pointerover', () => {
-            this.spawnWorkerButton.setStyle({ backgroundColor: '#3355aa' });
-        });
-
-        this.spawnWorkerButton.on('pointerout', () => {
-            this.spawnWorkerButton.setStyle({ backgroundColor: '#3366cc' });
-        });
-
-        this.spawnWorkerButton.on('pointerdown', () => {
-            this.queueWorkerTraining();
-        });
-
-        this.idleWorkerButton = this.add
-            .text(10, 120, 'Next Idle Worker (.)', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#228b22',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
-
-        this.idleWorkerButton.on('pointerover', () => {
-            this.idleWorkerButton.setStyle({ backgroundColor: '#2fa82f' });
-        });
-
-        this.idleWorkerButton.on('pointerout', () => {
-            this.idleWorkerButton.setStyle({ backgroundColor: '#228b22' });
-        });
-
-        this.idleWorkerButton.on('pointerdown', () => {
-            this.selectNextIdleWorker();
-        });
-
-        this.gatherNearestButton = this.add
-            .text(10, 160, 'Gather Nearest', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#8b8b00',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
-
-        this.gatherNearestButton.on('pointerover', () => {
-            this.gatherNearestButton.setStyle({ backgroundColor: '#a3a300' });
-        });
-
-        this.gatherNearestButton.on('pointerout', () => {
-            this.gatherNearestButton.setStyle({ backgroundColor: '#8b8b00' });
-        });
-
-        this.gatherNearestButton.on('pointerdown', () => {
-            this.commandGatherNearest();
-        });
-
-        this.autoGatherButton = this.add
-            .text(10, 200, '', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#444444',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
-
-        this.autoGatherButton.on('pointerover', () => {
-            const highlightColor = this.autoGatherEnabled ? '#6bbd42' : '#5a5a5a';
-            this.autoGatherButton.setStyle({ backgroundColor: highlightColor });
-        });
-
-        this.autoGatherButton.on('pointerout', () => {
-            this.updateAutoGatherButtonState();
-        });
-
-        this.autoGatherButton.on('pointerdown', () => {
-            this.toggleAutoGather();
-        });
-
-        this.updateAutoGatherButtonState();
-
-        this.trainingStatusText = this.add
-            .text(10, 240, '', {
-                fontSize: '14px',
-                color: '#ffffff',
-                backgroundColor: '#1a1a1a',
-                padding: { x: 10, y: 6 },
-                wordWrap: { width: 280 },
-            })
-            .setScrollFactor(0);
-
-        this.updateWorkerTypeToggle();
-        this.updateTrainingUI();
-
-        this.placementInfoText = this.add
-            .text(width / 2, 10, '', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#000000',
-                padding: { x: 10, y: 5 },
-            })
-            .setOrigin(0.5, 0)
-            .setScrollFactor(0)
-            .setDepth(1000)
-            .setVisible(false);
-
-        this.feedbackText = this.add
-            .text(width / 2, 40, '', {
-                fontSize: '14px',
-                color: '#ff6666',
-                backgroundColor: '#000000',
-                padding: { x: 8, y: 4 },
-            })
-            .setOrigin(0.5, 0)
-            .setScrollFactor(0)
-            .setDepth(1000)
-            .setVisible(false);
-
-        this.createResearchUI();
-    }
 
     private getAvailableWorkerTypes(): WorkerType[] {
         return this.workerTypes.filter((type) => this.unlockedWorkerTypeIds.has(type.id));
@@ -666,8 +394,7 @@ export class GameScene extends Phaser.Scene {
         const type = this.getSelectedWorkerType();
         const availableCount = this.getAvailableWorkerTypes().length;
         const suffix = availableCount > 1 ? ' (click to cycle)' : '';
-        this.workerTypeToggle.setText(`Training: ${type.name}${suffix}`);
-        this.workerTypeToggle.setStyle({ backgroundColor: availableCount > 1 ? '#2e8b57' : '#1f4d36' });
+        this.uiManager.setWorkerTypeLabel(`Training: ${type.name}${suffix}`, availableCount > 1);
     }
 
     private unlockWorkerTypes(typeIds: string[]) {
@@ -687,36 +414,6 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
-    private createResearchUI() {
-        const { width } = this.cameras.main;
-        const startX = 10;
-        const startY = this.researchStartY;
-        const rowHeight = 60;
-
-        this.researchOptions.forEach((option, index) => {
-            const y = startY + index * rowHeight;
-            const button = this.add
-                .text(startX, y, '', {
-                    fontSize: '14px',
-                    color: '#ffffff',
-                    backgroundColor: '#5a3e85',
-                    padding: { x: 8, y: 6 },
-                    wordWrap: { width: width / 3 },
-                })
-                .setScrollFactor(0)
-                .setInteractive({ useHandCursor: true });
-
-            button.on('pointerdown', () => {
-                this.startResearch(option.id);
-            });
-
-            option.button = button;
-            this.updateResearchButton(option);
-        });
-
-        this.refreshResearchAvailability();
-    }
-
     private refreshResearchAvailability() {
         this.researchOptions.forEach((option) => {
             if (option.status === 'completed' || option.status === 'inProgress') {
@@ -725,46 +422,14 @@ export class GameScene extends Phaser.Scene {
 
             if (!option.requiresBuilding) {
                 option.status = 'available';
-                this.updateResearchButton(option);
+                this.uiManager.updateResearchOption(option);
                 return;
             }
 
             const requirementMet = this.placedBuildings.some((building) => building.getConfig().name === option.requiresBuilding);
             option.status = requirementMet ? 'available' : 'locked';
-            this.updateResearchButton(option);
+            this.uiManager.updateResearchOption(option);
         });
-    }
-
-    private updateResearchButton(option: ResearchOption) {
-        if (!option.button) return;
-
-        const baseText = `${option.name} (${option.cost})\n${option.description}`;
-
-        if (option.status === 'completed') {
-            option.button.setText(`${baseText}\nCompleted`);
-            option.button.setStyle({ backgroundColor: '#2f6f3f', color: '#d3ffd3' });
-            option.button.disableInteractive();
-            return;
-        }
-
-        if (option.status === 'inProgress') {
-            const remainingSeconds = (option.remainingTime ?? 0) / 1000;
-            option.button.setText(`${baseText}\nResearching... ${remainingSeconds.toFixed(1)}s`);
-            option.button.setStyle({ backgroundColor: '#9466c4', color: '#ffffff' });
-            option.button.disableInteractive();
-            return;
-        }
-
-        if (option.status === 'available') {
-            option.button.setText(`${baseText}\nClick to research (${option.duration / 1000}s)`);
-            option.button.setStyle({ backgroundColor: '#5a3e85', color: '#ffffff' });
-            option.button.setInteractive({ useHandCursor: true });
-            return;
-        }
-
-        option.button.setText(`${baseText}\nRequires ${option.requiresBuilding}`);
-        option.button.setStyle({ backgroundColor: '#3d2b5c', color: '#bbbbbb' });
-        option.button.disableInteractive();
     }
 
     private startResearch(optionId: string) {
@@ -782,7 +447,7 @@ export class GameScene extends Phaser.Scene {
 
         option.status = 'inProgress';
         option.remainingTime = option.duration;
-        this.updateResearchButton(option);
+        this.uiManager.updateResearchOption(option);
 
         option.timer = this.time.addEvent({
             delay: 100,
@@ -790,7 +455,7 @@ export class GameScene extends Phaser.Scene {
             callback: () => {
                 if (!option.remainingTime) return;
                 option.remainingTime = Math.max(0, option.remainingTime - 100);
-                this.updateResearchButton(option);
+                this.uiManager.updateResearchOption(option);
                 if (option.remainingTime <= 0) {
                     this.completeResearch(option);
                 }
@@ -805,13 +470,13 @@ export class GameScene extends Phaser.Scene {
         this.completedResearch.add(option.id);
         option.onComplete();
         this.showFeedback(`${option.name} completed.`);
-        this.updateResearchButton(option);
+        this.uiManager.updateResearchOption(option);
     }
 
     private updateResearchProgress() {
         this.researchOptions.forEach((option) => {
             if (option.status === 'inProgress' && option.remainingTime !== undefined) {
-                this.updateResearchButton(option);
+                this.uiManager.updateResearchOption(option);
             }
         });
     }
@@ -1208,13 +873,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     private updateAutoGatherButtonState() {
-        const backgroundColor = this.autoGatherEnabled ? '#5f9e3c' : '#444444';
-        const label = this.autoGatherEnabled ? 'Auto-Gather: ON' : 'Auto-Gather: OFF';
-
-        if (this.autoGatherButton) {
-            this.autoGatherButton.setText(label);
-            this.autoGatherButton.setStyle({ backgroundColor });
-        }
+        this.uiManager.setAutoGatherEnabled(this.autoGatherEnabled);
     }
 
     private centerCameraOn(x: number, y: number) {
@@ -1373,12 +1032,11 @@ export class GameScene extends Phaser.Scene {
 
     private startPlacement(config: BuildingConfig) {
         this.currentPlacement = config;
-        this.feedbackText?.setVisible(false);
+        this.uiManager.showFeedback();
         const buildDuration = config.buildTime > 0 ? `${config.buildTime / 1000}s to complete` : 'instant build';
-        this.placementInfoText?.setText(
+        this.uiManager.setPlacementInfo(
             `Placing ${config.name} | Cost: ${config.cost} (paid upfront) | ${buildDuration} | Left-click to place, Right-click to cancel`,
         );
-        this.placementInfoText?.setVisible(true);
 
         if (!this.placementPreview) {
             this.placementPreview = this.add.rectangle(0, 0, config.width, config.height, config.color, 0.35);
@@ -1424,7 +1082,7 @@ export class GameScene extends Phaser.Scene {
         } else if (!validation.valid && validation.reason) {
             this.showFeedback(validation.reason);
         } else {
-            this.feedbackText?.setVisible(false);
+            this.uiManager.showFeedback();
         }
     }
 
@@ -1529,43 +1187,30 @@ export class GameScene extends Phaser.Scene {
     private cancelPlacement() {
         this.currentPlacement = undefined;
         this.placementPreview?.setVisible(false);
-        this.placementInfoText?.setVisible(false);
-        this.feedbackText?.setVisible(false);
+        this.uiManager.setPlacementInfo(undefined);
+        this.uiManager.showFeedback();
     }
 
     private updateResourceText() {
-        this.resourceText.setText(this.getResourcePanelText());
+        this.uiManager.updateResourceTotals(this.resourceTotals);
         this.updateTrainingUI();
     }
 
     private updatePopulationText() {
-        this.populationText.setText(this.getPopulationLabel());
+        this.uiManager.updatePopulation(this.currentPopulation, this.populationCap);
         this.updateTrainingUI();
     }
 
     private setSpawnWorkerButtonState(label: string, enabled: boolean) {
-        this.spawnWorkerButton.setText(label);
-
-        if (enabled) {
-            this.spawnWorkerButton
-                .setInteractive({ useHandCursor: true })
-                .setStyle({ backgroundColor: '#3366cc', color: '#ffffff' });
-        } else {
-            this.spawnWorkerButton.disableInteractive();
-            this.spawnWorkerButton.setStyle({ backgroundColor: '#555555', color: '#cccccc' });
-        }
+        this.uiManager.setTrainingButton(label, enabled);
     }
 
     private updateTrainingUI() {
-        if (!this.trainingStatusText || !this.spawnWorkerButton) {
-            return;
-        }
-
         const selectedBuilding = this.selectedBuilding;
 
         if (!this.canTrainWorkers(selectedBuilding)) {
             this.setSpawnWorkerButtonState('Select a Base to train workers', false);
-            this.trainingStatusText.setText('No production building selected.');
+            this.uiManager.setTrainingStatus('No production building selected.');
             return;
         }
 
@@ -1574,7 +1219,7 @@ export class GameScene extends Phaser.Scene {
 
         if (!queue) {
             this.setSpawnWorkerButtonState(`${buildingName} cannot train workers right now`, false);
-            this.trainingStatusText.setText(`${buildingName} is not ready to train units.`);
+            this.uiManager.setTrainingStatus(`${buildingName} is not ready to train units.`);
             return;
         }
 
@@ -1603,16 +1248,11 @@ export class GameScene extends Phaser.Scene {
             statusParts.push('Population cap reached');
         }
 
-        this.trainingStatusText.setText(statusParts.join(' | '));
+        this.uiManager.setTrainingStatus(statusParts.join(' | '));
     }
 
     private showFeedback(message: string) {
-        if (!this.feedbackText) {
-            return;
-        }
-
-        this.feedbackText.setText(message);
-        this.feedbackText.setVisible(true);
+        this.uiManager.showFeedback(message);
     }
 
     private createConstructionSite(x: number, y: number, config: BuildingConfig): ConstructionSite {
@@ -1844,12 +1484,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     private pulseResourceText() {
-        this.tweens.add({
-            targets: this.resourceText,
-            tint: 0xff0000,
-            duration: 150,
-            yoyo: true,
-            repeat: 2,
-        });
+        this.uiManager.pulseResourceText();
     }
 }
