@@ -1,0 +1,33 @@
+{
+  "name": "my-rts",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/eslint__js": "^8.42.3",
+    "@vitest/ui": "^4.0.12",
+    "eslint": "^9.39.1",
+    "happy-dom": "^20.0.10",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.47.0",
+    "vite": "npm:rolldown-vite@7.2.5",
+    "vitest": "^4.0.12"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@7.2.5"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  }
+}
