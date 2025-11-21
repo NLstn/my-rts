@@ -12,6 +12,7 @@ export class Base extends Building {
             type: 'hq',
             buildTime: 0,
             providesDropOff: true,
+            canTrainWorkers: true,
         };
         super(scene, config);
     }

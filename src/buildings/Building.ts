@@ -14,6 +14,7 @@ export interface BuildingConfig {
     description?: string;
     populationBonus?: number;
     providesDropOff?: boolean;
+    canTrainWorkers?: boolean;
 }
 
 export abstract class Building {
@@ -21,6 +22,7 @@ export abstract class Building {
     protected config: BuildingConfig;
     protected sprite?: Phaser.GameObjects.Rectangle;
     protected label?: Phaser.GameObjects.Text;
+    private selectionHandler?: (building: Building) => void;
 
     constructor(scene: Phaser.Scene, config: BuildingConfig) {
         this.scene = scene;
@@ -42,6 +44,7 @@ export abstract class Building {
 
         this.sprite.on('pointerdown', () => {
             this.onSelect();
+            this.selectionHandler?.(this);
         });
     }
 
@@ -58,12 +61,28 @@ export abstract class Building {
         }
     }
 
+    public setSelectionHandler(handler: (building: Building) => void) {
+        this.selectionHandler = handler;
+    }
+
+    public setSelected(selected: boolean) {
+        this.sprite?.setStrokeStyle(2, selected ? 0xffff00 : 0xffffff);
+    }
+
     public getConfig(): BuildingConfig {
         return this.config;
     }
 
     public getSprite(): Phaser.GameObjects.Rectangle | undefined {
         return this.sprite;
+    }
+
+    public getPosition(): Phaser.Math.Vector2 | undefined {
+        if (!this.sprite) {
+            return undefined;
+        }
+
+        return new Phaser.Math.Vector2(this.sprite.x, this.sprite.y);
     }
 
     public destroy(): void {
