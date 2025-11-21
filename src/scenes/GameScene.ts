@@ -704,6 +704,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     private assignWorkerToSite(site: ConstructionSite, worker: Worker) {
+        this.unassignWorkerFromOtherSites(worker, site);
+
         if (site.assignedWorker === worker) {
             return;
         }
@@ -722,6 +724,19 @@ export class GameScene extends Phaser.Scene {
             },
         );
         this.updateConstructionText(site);
+    }
+
+    private unassignWorkerFromOtherSites(worker: Worker, targetSite: ConstructionSite) {
+        this.constructionSites.forEach((otherSite) => {
+            if (otherSite === targetSite) {
+                return;
+            }
+
+            if (otherSite.assignedWorker === worker) {
+                otherSite.assignedWorker = undefined;
+                this.updateConstructionText(otherSite);
+            }
+        });
     }
 
     private updateConstructionSites(delta: number) {
