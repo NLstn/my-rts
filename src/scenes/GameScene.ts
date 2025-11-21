@@ -13,6 +13,12 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.6;
 const ZOOM_STEP = 0.0015;
 
+interface PlacementValidationResult {
+    valid: boolean;
+    reason?: string;
+    type?: 'building' | 'resource' | 'baseZone';
+}
+
 export class GameScene extends Phaser.Scene {
     private resources: number = 100;
 
@@ -465,23 +471,38 @@ export class GameScene extends Phaser.Scene {
         const snappedY = Math.round(pointer.worldY / this.gridSize) * this.gridSize;
 
         this.placementPreview.setPosition(snappedX, snappedY);
-        const collision = this.checkCollision(snappedX, snappedY, this.currentPlacement);
+        const validation = this.validatePlacement(snappedX, snappedY, this.currentPlacement);
         const hasResources = this.resources >= this.currentPlacement.cost;
-        const validPlacement = !collision && hasResources;
+        const validPlacement = validation.valid && hasResources;
 
-        this.placementPreview.setStrokeStyle(2, validPlacement ? 0x00ff00 : 0xff0000);
+        const strokeColor = !hasResources
+            ? 0xff0000
+            : validation.type === 'resource'
+                ? 0xffa500
+                : validation.type === 'baseZone'
+                    ? 0xff00ff
+                    : validation.valid
+                        ? 0x00ff00
+                        : 0xff0000;
+
+        this.placementPreview.setStrokeStyle(2, strokeColor);
         this.placementPreview.setFillStyle(this.currentPlacement.color, validPlacement ? 0.35 : 0.2);
 
         if (!hasResources) {
             this.showFeedback('Not enough resources');
-        } else if (collision) {
-            this.showFeedback('Cannot place: collision with existing building');
+        } else if (!validation.valid && validation.reason) {
+            this.showFeedback(validation.reason);
         } else {
             this.feedbackText?.setVisible(false);
         }
     }
 
-    private checkCollision(x: number, y: number, config: BuildingConfig) {
+    private validatePlacement(
+        x: number,
+        y: number,
+        config: BuildingConfig,
+        options: { checkBaseZone?: boolean } = {},
+    ): PlacementValidationResult {
         const previewBounds = new Phaser.Geom.Rectangle(
             x - config.width / 2,
             y - config.height / 2,
@@ -489,12 +510,44 @@ export class GameScene extends Phaser.Scene {
             config.height,
         );
 
-        return this.placedBuildings.some((building) => {
+        const resourceCollision = this.resourceNodes.find((node) => {
+            const nodeBounds = node.sprite.getBounds();
+            return Phaser.Geom.Intersects.RectangleToRectangle(previewBounds, nodeBounds);
+        });
+
+        if (resourceCollision) {
+            return { valid: false, reason: 'Cannot place: overlaps resource node', type: 'resource' };
+        }
+
+        if (options.checkBaseZone !== false) {
+            const baseZone = this.getBaseSpawnArea();
+            if (Phaser.Geom.Intersects.RectangleToRectangle(previewBounds, baseZone)) {
+                return { valid: false, reason: 'Cannot place: blocks base spawn area', type: 'baseZone' };
+            }
+        }
+
+        const buildingCollision = this.placedBuildings.some((building) => {
             const sprite = building.getSprite();
             if (!sprite) return false;
             const bounds = sprite.getBounds();
             return Phaser.Geom.Intersects.RectangleToRectangle(previewBounds, bounds);
         });
+
+        if (buildingCollision) {
+            return { valid: false, reason: 'Cannot place: collision with existing building', type: 'building' };
+        }
+
+        return { valid: true };
+    }
+
+    private getBaseSpawnArea() {
+        const zoneSize = 200;
+        return new Phaser.Geom.Rectangle(
+            this.basePosition.x - zoneSize / 2,
+            this.basePosition.y - zoneSize / 2,
+            zoneSize,
+            zoneSize,
+        );
     }
 
     private confirmPlacement() {
@@ -503,9 +556,9 @@ export class GameScene extends Phaser.Scene {
         }
 
         const { x, y } = this.placementPreview;
-        const hasCollision = this.checkCollision(x, y, this.currentPlacement);
-        if (hasCollision) {
-            this.showFeedback('Cannot place here. Please choose another spot.');
+        const validation = this.validatePlacement(x, y, this.currentPlacement);
+        if (!validation.valid) {
+            this.showFeedback(validation.reason ?? 'Cannot place here. Please choose another spot.');
             return;
         }
 
