@@ -271,6 +271,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         const nearestDropOff = this.findNearestDropOff();
         if (nearestDropOff) {
             this.buildPathTo(nearestDropOff.x, nearestDropOff.y);
+            // Reset retry counter on successful drop-off path finding
             this.stopDropOffRetry();
         } else {
             this.updateState(WorkerState.Idle);
@@ -325,18 +326,22 @@ export class Worker extends Phaser.GameObjects.Rectangle {
             return;
         }
 
-        this.stopDropOffRetry();
+        // Don't schedule a new retry if one is already pending
+        if (this.dropOffRetryTimer) {
+            return;
+        }
 
         // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
         const delay = Math.min(
             this.dropOffRetryBaseDelay * Math.pow(2, this.dropOffRetryCount),
             this.dropOffRetryMaxDelay,
         );
-        this.dropOffRetryCount++;
 
         this.dropOffRetryTimer = this.scene.time.addEvent({
             delay,
             callback: () => {
+                this.dropOffRetryTimer = undefined;
+                this.dropOffRetryCount++;
                 // Re-check conditions as worker state may have changed since scheduling
                 if (this.shouldAttemptDropOff()) {
                     this.returnToBase();
