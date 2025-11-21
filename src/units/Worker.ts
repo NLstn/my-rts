@@ -204,10 +204,6 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         return this.buildSpeedMultiplier;
     }
 
-    public resetBaseStats() {
-        this.harvestRate = this.baseHarvestRate;
-        this.capacity = this.baseCapacity;
-    }
 
     public update() {
         if (this.state === WorkerState.Harvesting || this.state === WorkerState.Idle || this.state === WorkerState.Building) {
