@@ -306,7 +306,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         const baseYield = Math.min(depletion, this.targetNode.yieldPerTick, availableCapacity);
         const harvested = Math.max(1, Math.round(baseYield * harvestMultiplier));
         this.carried += harvested;
-        this.targetNode.amount -= harvested;
+        this.targetNode.amount -= depletion;
 
         this.onResourceUpdate(this.targetNode);
 
