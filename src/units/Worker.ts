@@ -88,7 +88,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.stopHarvesting();
         this.clearBuildTarget();
         this.targetNode = node;
-        this.state = WorkerState.Moving;
+        this.updateState(WorkerState.Moving);
         this.buildPathTo(node.sprite.x, node.sprite.y);
     }
 
@@ -96,7 +96,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         this.stopHarvesting();
         this.clearBuildTarget();
         this.targetNode = undefined;
-        this.state = WorkerState.Moving;
+        this.updateState(WorkerState.Moving);
         this.buildPathTo(target.x, target.y);
     }
 
@@ -107,13 +107,13 @@ export class Worker extends Phaser.GameObjects.Rectangle {
             onArrive,
             onCancel,
         };
-        this.state = WorkerState.MovingToBuild;
+        this.updateState(WorkerState.MovingToBuild);
         this.buildPathTo(target.x, target.y);
     }
 
     public releaseFromConstruction() {
         this.buildTarget = undefined;
-        this.state = WorkerState.Idle;
+        this.updateState(WorkerState.Idle);
         this.waypoints = [];
         (this.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     }
@@ -123,7 +123,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
             this.buildTarget.onCancel();
         }
         this.buildTarget = undefined;
-        this.state = WorkerState.Idle;
+        this.updateState(WorkerState.Idle);
         this.waypoints = [];
         (this.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     }
@@ -170,21 +170,21 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         }
 
         if (this.state === WorkerState.MovingToBuild && this.buildTarget) {
-            this.state = WorkerState.Building;
+            this.updateState(WorkerState.Building);
             this.buildTarget.onArrive();
             return;
         }
 
-        this.state = WorkerState.Idle;
+        this.updateState(WorkerState.Idle);
     }
 
     private startHarvesting() {
         if (!this.targetNode) {
-            this.state = WorkerState.Idle;
+            this.updateState(WorkerState.Idle);
             return;
         }
 
-        this.state = WorkerState.Harvesting;
+        this.updateState(WorkerState.Harvesting);
         const sprite = this.targetNode.sprite;
         sprite.setFillStyle(0xffe066);
 
@@ -198,7 +198,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     private harvestTick() {
         if (!this.targetNode) {
             this.stopHarvesting();
-            this.state = WorkerState.Idle;
+            this.updateState(WorkerState.Idle);
             return;
         }
 
@@ -207,7 +207,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
             if (this.carried > 0) {
                 this.returnToBase();
             } else {
-                this.state = WorkerState.Idle;
+                this.updateState(WorkerState.Idle);
             }
             return;
         }
@@ -244,18 +244,18 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         if (this.carried > 0) {
             this.returnToBase();
         } else {
-            this.state = WorkerState.Idle;
+            this.updateState(WorkerState.Idle);
             this.targetNode = undefined;
         }
     }
 
     private returnToBase() {
-        this.state = WorkerState.Returning;
+        this.updateState(WorkerState.Returning);
         const nearestDropOff = this.findNearestDropOff();
         if (nearestDropOff) {
             this.buildPathTo(nearestDropOff.x, nearestDropOff.y);
         } else {
-            this.state = WorkerState.Idle;
+            this.updateState(WorkerState.Idle);
         }
     }
 
@@ -284,7 +284,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
             this.onDeposit(this.carried);
         }
         this.carried = 0;
-        this.state = WorkerState.Idle;
+        this.updateState(WorkerState.Idle);
         this.targetNode = undefined;
     }
 
@@ -303,8 +303,18 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     private clearBuildTarget() {
         this.buildTarget = undefined;
         if (this.state === WorkerState.MovingToBuild || this.state === WorkerState.Building) {
-            this.state = WorkerState.Idle;
+            this.updateState(WorkerState.Idle);
         }
+    }
+
+    private updateState(nextState: WorkerStateType) {
+        if (this.state === nextState) {
+            return;
+        }
+
+        const previousState = this.state;
+        this.state = nextState;
+        this.emit('stateChanged', nextState, previousState);
     }
 
     private buildPathTo(x: number, y: number) {

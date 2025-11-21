@@ -5,7 +5,7 @@ import { Base } from '../buildings/Base';
 import { House } from '../buildings/House';
 import { Storehouse } from '../buildings/Storehouse';
 import { Tower } from '../buildings/Tower';
-import { type ResourceNode, Worker, WorkerState } from '../units/Worker';
+import { type ResourceNode, type WorkerStateType, Worker, WorkerState } from '../units/Worker';
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
@@ -48,6 +48,7 @@ export class GameScene extends Phaser.Scene {
     private resourceText!: Phaser.GameObjects.Text;
     private populationText!: Phaser.GameObjects.Text;
     private spawnWorkerButton!: Phaser.GameObjects.Text;
+    private idleWorkerButton!: Phaser.GameObjects.Text;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
     private zoomKeys!: Record<'Q' | 'E', Phaser.Input.Keyboard.Key>;
@@ -63,6 +64,7 @@ export class GameScene extends Phaser.Scene {
     private dropOffMarkers: Phaser.GameObjects.Shape[] = [];
     private buildMenuConfigs: BuildingConfig[] = [];
     private workers: Worker[] = [];
+    private readonly idleWorkers: Set<Worker> = new Set();
     private selectedWorker?: Worker;
     private resourceNodes: ResourceNode[] = [];
     private nodeIdCounter: number = 0;
@@ -143,6 +145,10 @@ export class GameScene extends Phaser.Scene {
             Phaser.Input.Keyboard.Key
         >;
         this.zoomKeys = this.input.keyboard!.addKeys('Q,E') as Record<'Q' | 'E', Phaser.Input.Keyboard.Key>;
+
+        this.input.keyboard?.on('keydown-PERIOD', () => {
+            this.selectNextIdleWorker();
+        });
 
         this.input.on('wheel', (pointer: Phaser.Input.Pointer, _gameObjects: unknown, _deltaX: number, deltaY: number) => {
             this.adjustCameraZoom(-deltaY * ZOOM_STEP, pointer);
@@ -309,6 +315,28 @@ export class GameScene extends Phaser.Scene {
 
         this.setSpawnWorkerButtonState(`Spawn Worker (${this.workerCost})`, true);
 
+        this.idleWorkerButton = this.add
+            .text(10, 90, 'Next Idle Worker (.)', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#228b22',
+                padding: { x: 10, y: 5 },
+            })
+            .setScrollFactor(0)
+            .setInteractive({ useHandCursor: true });
+
+        this.idleWorkerButton.on('pointerover', () => {
+            this.idleWorkerButton.setStyle({ backgroundColor: '#2fa82f' });
+        });
+
+        this.idleWorkerButton.on('pointerout', () => {
+            this.idleWorkerButton.setStyle({ backgroundColor: '#228b22' });
+        });
+
+        this.idleWorkerButton.on('pointerdown', () => {
+            this.selectNextIdleWorker();
+        });
+
         this.placementInfoText = this.add
             .text(width / 2, 10, '', {
                 fontSize: '16px',
@@ -389,6 +417,7 @@ export class GameScene extends Phaser.Scene {
         this.workers.push(worker);
         this.currentPopulation += 1;
         this.updatePopulationText();
+        this.trackWorker(worker);
         this.selectWorker(worker);
     }
 
@@ -396,6 +425,40 @@ export class GameScene extends Phaser.Scene {
         this.selectedWorker?.setSelected(false);
         this.selectedWorker = worker;
         this.selectedWorker.setSelected(true);
+    }
+
+    private trackWorker(worker: Worker) {
+        if (worker.state === WorkerState.Idle) {
+            this.idleWorkers.add(worker);
+        }
+
+        worker.on('stateChanged', (newState: WorkerStateType) => {
+            if (newState === WorkerState.Idle) {
+                this.idleWorkers.add(worker);
+            } else {
+                this.idleWorkers.delete(worker);
+            }
+        });
+    }
+
+    private selectNextIdleWorker() {
+        const idleWorkers = Array.from(this.idleWorkers);
+
+        if (!idleWorkers.length) {
+            this.showFeedback('No idle workers available.');
+            return;
+        }
+
+        const currentIndex = this.selectedWorker ? idleWorkers.indexOf(this.selectedWorker) : -1;
+        const nextIndex = (currentIndex + 1) % idleWorkers.length;
+        const worker = idleWorkers[nextIndex];
+
+        this.selectWorker(worker);
+        this.centerCameraOn(worker.x, worker.y);
+    }
+
+    private centerCameraOn(x: number, y: number) {
+        this.cameras.main.centerOn(x, y);
     }
 
     private handleCommand(worldX: number, worldY: number) {
