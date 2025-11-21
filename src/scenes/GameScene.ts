@@ -37,6 +37,16 @@ interface ConstructionSite {
     assignedWorker?: Worker;
 }
 
+type ScenarioGoalType = 'resources' | 'houses' | 'storehouses' | 'workers';
+
+interface ScenarioGoal {
+    id: ScenarioGoalType;
+    description: string;
+    current: number;
+    target: number;
+    completed: boolean;
+}
+
 export class GameScene extends Phaser.Scene {
     private resources: number = 100;
 
@@ -75,6 +85,19 @@ export class GameScene extends Phaser.Scene {
     private readonly workerProductionTimeMs = 2000;
     private autoGatherEnabled: boolean = false;
 
+    private scenarioGoals: ScenarioGoal[] = [];
+    private readonly scenarioDurationMs = 4 * 60 * 1000;
+    private scenarioEndTime: number = 0;
+    private scenarioCompleted: boolean = false;
+    private scenarioFailed: boolean = false;
+    private scenarioPanel?: Phaser.GameObjects.Container;
+    private scenarioPanelBackground?: Phaser.GameObjects.Rectangle;
+    private goalTextMap: Map<ScenarioGoalType, Phaser.GameObjects.Text> = new Map();
+    private scenarioTimerText?: Phaser.GameObjects.Text;
+    private scenarioResultContainer?: Phaser.GameObjects.Container;
+    private housesBuilt: number = 0;
+    private storehousesBuilt: number = 0;
+
     constructor() {
         super({ key: 'GameScene' });
     }
@@ -106,6 +129,8 @@ export class GameScene extends Phaser.Scene {
         // Sample resource nodes
         this.createResourceNode(600, 300);
         this.createResourceNode(800, 500);
+
+        this.initializeScenarioGoals();
 
         this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
             this.updatePlacementPreview(pointer);
@@ -410,6 +435,210 @@ export class GameScene extends Phaser.Scene {
             .setVisible(false);
     }
 
+    private initializeScenarioGoals() {
+        this.scenarioGoals = [
+            {
+                id: 'resources',
+                description: 'Reach 200 resources',
+                current: this.resources,
+                target: 200,
+                completed: this.resources >= 200,
+            },
+            {
+                id: 'houses',
+                description: 'Build 2 Houses',
+                current: 0,
+                target: 2,
+                completed: false,
+            },
+            {
+                id: 'storehouses',
+                description: 'Build 1 Storehouse',
+                current: 0,
+                target: 1,
+                completed: false,
+            },
+            {
+                id: 'workers',
+                description: 'Train 4 Workers',
+                current: 0,
+                target: 4,
+                completed: false,
+            },
+        ];
+
+        this.scenarioEndTime = this.time.now + this.scenarioDurationMs;
+        this.createScenarioPanel();
+        this.refreshGoalPanel();
+        this.updateScenarioTimer();
+        this.checkScenarioCompletion();
+    }
+
+    private createScenarioPanel() {
+        const panelWidth = 280;
+        const headerHeight = 28;
+        this.scenarioPanel = this.add.container(10, 140).setScrollFactor(0);
+
+        this.scenarioPanelBackground = this.add
+            .rectangle(0, 0, panelWidth, 200, 0x000000, 0.55)
+            .setOrigin(0, 0);
+
+        const title = this.add.text(10, 6, 'Scenario Goals', {
+            fontSize: '16px',
+            color: '#f0f8ff',
+            fontStyle: 'bold',
+        });
+
+        this.scenarioPanel.add([this.scenarioPanelBackground, title]);
+
+        this.goalTextMap.clear();
+        let offsetY = headerHeight;
+        this.scenarioGoals.forEach((goal) => {
+            const text = this.add.text(10, offsetY, '', {
+                fontSize: '13px',
+                color: '#ffffff',
+                wordWrap: { width: panelWidth - 20 },
+            });
+            this.goalTextMap.set(goal.id, text);
+            this.scenarioPanel?.add(text);
+            offsetY += 24;
+        });
+
+        this.scenarioTimerText = this.add.text(10, offsetY + 4, '', {
+            fontSize: '12px',
+            color: '#dcdcdc',
+        });
+        this.scenarioPanel.add(this.scenarioTimerText);
+
+        this.scenarioPanelBackground.height = offsetY + 36;
+    }
+
+    private refreshGoalPanel() {
+        let offsetY = 28;
+        this.scenarioGoals.forEach((goal) => {
+            const text = this.goalTextMap.get(goal.id);
+            if (!text) return;
+
+            const progress = `${Math.min(goal.current, goal.target)}/${goal.target}`;
+            text.setText(`${goal.description}: ${progress}${goal.completed ? ' ✓' : ''}`);
+            text.setColor(goal.completed ? '#9cff9c' : '#ffffff');
+            text.y = offsetY;
+            offsetY += 24;
+        });
+
+        if (this.scenarioTimerText) {
+            this.scenarioTimerText.y = offsetY + 4;
+        }
+
+        if (this.scenarioPanelBackground) {
+            this.scenarioPanelBackground.height = offsetY + 36;
+        }
+    }
+
+    private updateScenarioGoal(type: ScenarioGoalType, value: number) {
+        const goal = this.scenarioGoals.find((candidate) => candidate.id === type);
+        if (!goal) {
+            return;
+        }
+
+        if (type === 'resources') {
+            goal.current = Math.max(goal.current, value);
+        } else {
+            goal.current = Math.min(goal.target, value);
+        }
+
+        if (!goal.completed && goal.current >= goal.target) {
+            goal.completed = true;
+            this.showFeedback(`Goal completed: ${goal.description}`);
+        }
+
+        this.refreshGoalPanel();
+        this.checkScenarioCompletion();
+    }
+
+    private updateScenarioTimer() {
+        if (this.scenarioCompleted || this.scenarioFailed) {
+            return;
+        }
+
+        const remainingMs = this.scenarioEndTime - this.time.now;
+
+        if (remainingMs <= 0) {
+            this.handleScenarioFailure();
+            return;
+        }
+
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+        this.scenarioTimerText?.setText(`Time remaining: ${remainingSeconds}s`);
+    }
+
+    private checkScenarioCompletion() {
+        if (this.scenarioCompleted || this.scenarioFailed) {
+            return;
+        }
+
+        const allComplete = this.scenarioGoals.every((goal) => goal.completed);
+        if (allComplete) {
+            this.scenarioCompleted = true;
+            this.showScenarioResult('Objectives complete! Great job.', '#2fa82f');
+        }
+    }
+
+    private handleScenarioFailure() {
+        if (this.scenarioCompleted || this.scenarioFailed) {
+            return;
+        }
+
+        this.scenarioFailed = true;
+        this.showScenarioResult('Objectives failed: time expired.', '#ff6666');
+    }
+
+    private showScenarioResult(message: string, color: string) {
+        if (this.scenarioResultContainer) {
+            return;
+        }
+
+        const { width, height } = this.scale;
+        const container = this.add.container(width / 2, height / 2).setScrollFactor(0);
+        const background = this.add.rectangle(0, 0, 420, 160, 0x000000, 0.8).setOrigin(0.5);
+        background.setStrokeStyle(2, 0xffffff, 0.7);
+
+        const label = this.add
+            .text(0, -30, message, {
+                fontSize: '18px',
+                color,
+                fontStyle: 'bold',
+                align: 'center',
+                wordWrap: { width: 360 },
+            })
+            .setOrigin(0.5);
+
+        const menuButton = this.add
+            .text(0, 30, 'Return to Menu', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#333333',
+                padding: { x: 14, y: 8 },
+            })
+            .setOrigin(0.5)
+            .setInteractive({ useHandCursor: true });
+
+        menuButton.on('pointerover', () => {
+            menuButton.setStyle({ backgroundColor: '#555555' });
+        });
+
+        menuButton.on('pointerout', () => {
+            menuButton.setStyle({ backgroundColor: '#333333' });
+        });
+
+        menuButton.on('pointerdown', () => {
+            this.scene.start('MainMenuScene');
+        });
+
+        container.add([background, label, menuButton]);
+        this.scenarioResultContainer = container;
+    }
+
     private spawnWorker() {
         if (this.workerProductionTimer) {
             this.showFeedback('Worker training already in progress.');
@@ -471,6 +700,7 @@ export class GameScene extends Phaser.Scene {
         this.trackWorker(worker);
         worker.setAutoGatherEnabled(this.autoGatherEnabled);
         this.selectWorker(worker);
+        this.updateScenarioGoal('workers', this.workers.length);
     }
 
     private selectWorker(worker: Worker) {
@@ -631,6 +861,7 @@ export class GameScene extends Phaser.Scene {
     private depositResource(amount: number) {
         this.resources += amount;
         this.updateResourceText();
+        this.updateScenarioGoal('resources', this.resources);
     }
 
     update(_time: number, delta: number) {
@@ -638,6 +869,7 @@ export class GameScene extends Phaser.Scene {
         this.workers.forEach((worker) => worker.update());
         this.updateWorkerProductionUI();
         this.updateConstructionSites(delta);
+        this.updateScenarioTimer();
     }
 
     private handleCameraControls(delta: number) {
@@ -1081,6 +1313,17 @@ export class GameScene extends Phaser.Scene {
         this.placedBuildings.push(building);
         site.assignedWorker?.releaseFromConstruction();
         this.applyBuildingEffects(site.config, site.position);
+
+        if (site.config.name === 'House') {
+            this.housesBuilt += 1;
+            this.updateScenarioGoal('houses', this.housesBuilt);
+        }
+
+        if (site.config.name === 'Storehouse') {
+            this.storehousesBuilt += 1;
+            this.updateScenarioGoal('storehouses', this.storehousesBuilt);
+        }
+
         this.showFeedback(`${site.config.name} completed.`);
     }
 
