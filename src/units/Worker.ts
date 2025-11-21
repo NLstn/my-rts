@@ -402,12 +402,6 @@ export class Worker extends Phaser.GameObjects.Rectangle {
             const fillColor = this.targetNode.amount <= 0 ? 0x777755 : this.targetNode.color;
             this.targetNode.sprite.setFillStyle(fillColor);
         }
-        
-        // Clear resource type only if we have no carried resources
-        // (resources being carried still need their type for deposit)
-        if (this.carried === 0) {
-            this.resourceType = undefined;
-        }
     }
 
     private scheduleDropOffRetry() {
