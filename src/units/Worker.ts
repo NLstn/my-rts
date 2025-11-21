@@ -35,6 +35,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private carried: number = 0;
 
+    private resourceType?: ResourceType;
+
     private buildSpeedMultiplier: number = 1;
 
     private harvestRate: number = 1000;
@@ -307,6 +309,11 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         const harvested = Math.max(1, Math.round(baseYield * harvestMultiplier));
         this.carried += harvested;
         this.targetNode.amount -= harvested;
+        
+        // Store resource type when first harvesting
+        if (!this.resourceType) {
+            this.resourceType = this.targetNode.type;
+        }
 
         this.onResourceUpdate(this.targetNode);
 
@@ -374,10 +381,11 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     }
 
     private depositResources() {
-        if (this.carried > 0 && this.targetNode) {
-            this.onDeposit(this.targetNode.type, this.carried);
+        if (this.carried > 0 && this.resourceType) {
+            this.onDeposit(this.resourceType, this.carried);
         }
         this.carried = 0;
+        this.resourceType = undefined;
         this.targetNode = undefined;
         this.updateState(WorkerState.Idle);
         this.stopDropOffRetry();
