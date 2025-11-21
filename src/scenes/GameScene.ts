@@ -12,6 +12,7 @@ const EDGE_SCROLL_THRESHOLD = 30;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.6;
 const ZOOM_STEP = 0.0015;
+const KEYBOARD_ZOOM_RATE = 240;
 
 interface PlacementValidationResult {
     valid: boolean;
@@ -44,6 +45,7 @@ export class GameScene extends Phaser.Scene {
     private spawnWorkerButton!: Phaser.GameObjects.Text;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
+    private zoomKeys!: Record<'Q' | 'E', Phaser.Input.Keyboard.Key>;
     private readonly gridSize = 50;
     private placementPreview?: Phaser.GameObjects.Rectangle;
     private placementInfoText?: Phaser.GameObjects.Text;
@@ -129,19 +131,10 @@ export class GameScene extends Phaser.Scene {
             'W' | 'A' | 'S' | 'D',
             Phaser.Input.Keyboard.Key
         >;
+        this.zoomKeys = this.input.keyboard!.addKeys('Q,E') as Record<'Q' | 'E', Phaser.Input.Keyboard.Key>;
 
-        this.input.on('wheel', (_pointer: unknown, _gameObjects: unknown, _deltaX: number, deltaY: number) => {
-            const camera = this.cameras.main;
-            const newZoom = Phaser.Math.Clamp(camera.zoom - deltaY * ZOOM_STEP, MIN_ZOOM, MAX_ZOOM);
-            camera.setZoom(newZoom);
-
-            const maxScrollX = Math.max(WORLD_WIDTH - camera.displayWidth, 0);
-            const maxScrollY = Math.max(WORLD_HEIGHT - camera.displayHeight, 0);
-
-            camera.setScroll(
-                Phaser.Math.Clamp(camera.scrollX, 0, maxScrollX),
-                Phaser.Math.Clamp(camera.scrollY, 0, maxScrollY),
-            );
+        this.input.on('wheel', (pointer: Phaser.Input.Pointer, _gameObjects, _deltaX, deltaY: number) => {
+            this.adjustCameraZoom(-deltaY * ZOOM_STEP, pointer);
         });
 
         this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -413,6 +406,7 @@ export class GameScene extends Phaser.Scene {
 
         let moveX = 0;
         let moveY = 0;
+        let zoomDelta = 0;
 
         if (this.cursors.left?.isDown || this.wasdKeys.A.isDown) {
             moveX -= KEYBOARD_PAN_SPEED;
@@ -442,11 +436,56 @@ export class GameScene extends Phaser.Scene {
             moveY += EDGE_SCROLL_SPEED;
         }
 
+        if (this.zoomKeys.Q.isDown) {
+            zoomDelta -= KEYBOARD_ZOOM_RATE * ZOOM_STEP * deltaSeconds;
+        }
+
+        if (this.zoomKeys.E.isDown) {
+            zoomDelta += KEYBOARD_ZOOM_RATE * ZOOM_STEP * deltaSeconds;
+        }
+
         const maxScrollX = Math.max(WORLD_WIDTH - camera.displayWidth, 0);
         const maxScrollY = Math.max(WORLD_HEIGHT - camera.displayHeight, 0);
 
         camera.scrollX = Phaser.Math.Clamp(camera.scrollX + moveX * deltaSeconds, 0, maxScrollX);
         camera.scrollY = Phaser.Math.Clamp(camera.scrollY + moveY * deltaSeconds, 0, maxScrollY);
+
+        if (zoomDelta !== 0) {
+            this.adjustCameraZoom(zoomDelta, pointer);
+        }
+    }
+
+    private adjustCameraZoom(deltaZoom: number, pointer?: Phaser.Input.Pointer) {
+        const camera = this.cameras.main;
+        const previousZoom = camera.zoom;
+        const targetZoom = Phaser.Math.Clamp(previousZoom + deltaZoom, MIN_ZOOM, MAX_ZOOM);
+
+        if (targetZoom === previousZoom) {
+            return;
+        }
+
+        const pointerWorldBefore = pointer ? camera.getWorldPoint(pointer.x, pointer.y) : undefined;
+
+        camera.setZoom(targetZoom);
+
+        const maxScrollX = Math.max(WORLD_WIDTH - camera.displayWidth, 0);
+        const maxScrollY = Math.max(WORLD_HEIGHT - camera.displayHeight, 0);
+
+        if (pointerWorldBefore && pointer) {
+            const pointerWorldAfter = camera.getWorldPoint(pointer.x, pointer.y);
+            const offsetX = pointerWorldBefore.x - pointerWorldAfter.x;
+            const offsetY = pointerWorldBefore.y - pointerWorldAfter.y;
+
+            camera.setScroll(
+                Phaser.Math.Clamp(camera.scrollX + offsetX, 0, maxScrollX),
+                Phaser.Math.Clamp(camera.scrollY + offsetY, 0, maxScrollY),
+            );
+        } else {
+            camera.setScroll(
+                Phaser.Math.Clamp(camera.scrollX, 0, maxScrollX),
+                Phaser.Math.Clamp(camera.scrollY, 0, maxScrollY),
+            );
+        }
     }
 
     private updateWorkerProductionUI() {
