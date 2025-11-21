@@ -289,6 +289,8 @@ export class GameScene extends Phaser.Scene {
             this.basePosition,
             this.gridSize,
             (amount) => this.depositResource(amount),
+            (node) => this.updateResourceLabel(node),
+            (node) => this.handleResourceDepleted(node),
         );
 
         worker.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -313,6 +315,10 @@ export class GameScene extends Phaser.Scene {
         const targetNode = this.resourceNodes.find((node) => node.sprite.getBounds().contains(worldX, worldY));
 
         if (targetNode) {
+            if (targetNode.amount <= 0) {
+                this.showFeedback('This resource node is depleted.');
+                return;
+            }
             this.selectedWorker.assignResource(targetNode);
             return;
         }
@@ -325,19 +331,46 @@ export class GameScene extends Phaser.Scene {
         resource.setStrokeStyle(2, 0xffff00);
         resource.setInteractive({ useHandCursor: true });
 
+        const label = this.add
+            .text(x, y - 35, '100', {
+                fontSize: '14px',
+                color: '#ffffff',
+                backgroundColor: '#000000',
+                padding: { x: 4, y: 2 },
+            })
+            .setOrigin(0.5);
+
         const node: ResourceNode = {
             id: this.nodeIdCounter++,
             sprite: resource,
+            label,
             amount: 100,
         };
 
         resource.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
             if (pointer.rightButtonDown() && this.selectedWorker) {
+                if (node.amount <= 0) {
+                    this.showFeedback('This resource node is depleted.');
+                    return;
+                }
                 this.selectedWorker.assignResource(node);
             }
         });
 
         this.resourceNodes.push(node);
+    }
+
+    private updateResourceLabel(node: ResourceNode) {
+        node.label.setText(`${node.amount}`);
+    }
+
+    private handleResourceDepleted(node: ResourceNode) {
+        node.sprite.disableInteractive();
+        node.label.setText('Depleted');
+        node.label.setColor('#ff6666');
+        this.resourceNodes = this.resourceNodes.filter((existingNode) => existingNode.id !== node.id);
+
+        this.workers.forEach((worker) => worker.handleDepletedNode(node));
     }
 
     private depositResource(amount: number) {
