@@ -140,8 +140,6 @@ export class GameScene extends Phaser.Scene {
         food: 60,
     };
 
-    private readonly workerCost: number = 25;
-
     private populationCap: number = 8;
     private currentPopulation: number = 0;
 
