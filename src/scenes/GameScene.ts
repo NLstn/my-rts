@@ -5,7 +5,43 @@ import { Base } from '../buildings/Base';
 import { House } from '../buildings/House';
 import { Storehouse } from '../buildings/Storehouse';
 import { Tower } from '../buildings/Tower';
-import { type ResourceNode, type WorkerStateType, Worker, WorkerState } from '../units/Worker';
+import { type ResourceNode, type ResourceType, type WorkerStateType, Worker, WorkerState } from '../units/Worker';
+
+type ResourceSettings = {
+    color: number;
+    label: string;
+    startingAmount: number;
+    yieldPerTick: number;
+    depletionRate: number;
+    respawnDelay: number;
+};
+
+const RESOURCE_CONFIGS: Record<ResourceType, ResourceSettings> = {
+    wood: {
+        color: 0x2f8f2f,
+        label: 'Wood',
+        startingAmount: 180,
+        yieldPerTick: 8,
+        depletionRate: 6,
+        respawnDelay: 12000,
+    },
+    stone: {
+        color: 0x808080,
+        label: 'Stone',
+        startingAmount: 140,
+        yieldPerTick: 6,
+        depletionRate: 7,
+        respawnDelay: 15000,
+    },
+    food: {
+        color: 0xd97706,
+        label: 'Food',
+        startingAmount: 160,
+        yieldPerTick: 7,
+        depletionRate: 5,
+        respawnDelay: 10000,
+    },
+};
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
@@ -98,7 +134,14 @@ interface HarvestBonusZone {
 }
 
 export class GameScene extends Phaser.Scene {
-    private resources: number = 100;
+    private resourceTotals: Record<ResourceType, number> = {
+        wood: 100,
+        stone: 60,
+        food: 60,
+    };
+
+    private readonly workerCost: number = 25;
+
     private populationCap: number = 8;
     private currentPopulation: number = 0;
 
@@ -203,6 +246,7 @@ export class GameScene extends Phaser.Scene {
         this.addDropOffPoint(this.basePosition.clone());
         this.initializeResourceManager();
 
+        this.generateStartingResources();
         this.initializeScenarioGoals();
 
         this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
@@ -339,6 +383,19 @@ export class GameScene extends Phaser.Scene {
         return `Population: ${this.currentPopulation}/${this.populationCap}`;
     }
 
+    private getResourcePanelText() {
+        return [
+            'Resources',
+            `Wood: ${this.resourceTotals.wood}`,
+            `Stone: ${this.resourceTotals.stone}`,
+            `Food: ${this.resourceTotals.food}`,
+        ].join('\n');
+    }
+
+    private hasSufficientResource(type: ResourceType, amount: number) {
+        return this.resourceTotals[type] >= amount;
+    }
+
     private createBuildMenu(anchorX: number, startY: number) {
         const spacing = 48;
         const buttonWidth = 240;
@@ -457,7 +514,10 @@ export class GameScene extends Phaser.Scene {
                 continue;
             }
 
-            return this.createResourceNode(clampedX, clampedY);
+            // Randomly select a resource type
+            const types: ResourceType[] = ['wood', 'stone', 'food'];
+            const randomType = types[Phaser.Math.Between(0, types.length - 1)];
+            return this.createResourceNode(clampedX, clampedY, randomType);
         }
 
         return undefined;
@@ -519,11 +579,12 @@ export class GameScene extends Phaser.Scene {
 
         // Resource display
         this.resourceText = this.add
-            .text(width - 10, 10, `Resources: ${this.resources}`, {
-                fontSize: '20px',
+            .text(width - 10, 10, this.getResourcePanelText(), {
+                fontSize: '18px',
                 color: '#ffff00',
                 backgroundColor: '#000000',
                 padding: { x: 10, y: 5 },
+                lineSpacing: 4,
             })
             .setOrigin(1, 0)
             .setScrollFactor(0)
@@ -849,13 +910,13 @@ export class GameScene extends Phaser.Scene {
         const option = this.researchOptions.find((candidate) => candidate.id === optionId);
         if (!option || option.status !== 'available') return;
 
-        if (this.resources < option.cost) {
-            this.showFeedback('Not enough resources for that research.');
+        if (!this.hasSufficientResource('wood', option.cost)) {
+            this.showFeedback('Not enough wood for that research.');
             this.pulseResourceText();
             return;
         }
 
-        this.resources -= option.cost;
+        this.resourceTotals.wood -= option.cost;
         this.updateResourceText();
 
         option.status = 'inProgress';
@@ -913,10 +974,10 @@ export class GameScene extends Phaser.Scene {
         this.scenarioGoals = [
             {
                 id: 'resources',
-                description: 'Reach 200 resources',
-                current: this.resources,
+                description: 'Reach 200 wood',
+                current: this.resourceTotals.wood,
                 target: 200,
-                completed: this.resources >= 200,
+                completed: this.resourceTotals.wood >= 200,
             },
             {
                 id: 'houses',
@@ -1134,14 +1195,14 @@ export class GameScene extends Phaser.Scene {
             return;
         }
 
-        if (this.resources < type.cost) {
-            this.showFeedback(`Not enough resources to train a ${type.name}.`);
+        if (!this.hasSufficientResource('wood', type.cost)) {
+            this.showFeedback(`Not enough wood to train a ${type.name}.`);
             this.pulseResourceText();
             this.updateTrainingUI();
             return;
         }
 
-        this.resources -= type.cost;
+        this.resourceTotals.wood -= type.cost;
         this.updateResourceText();
 
         queue.pending += 1;
@@ -1187,7 +1248,7 @@ export class GameScene extends Phaser.Scene {
             spawnPosition.y + jitter.y,
             this.gridSize,
             () => this.dropOffPoints,
-            (amount) => this.depositResource(amount),
+            (type: ResourceType, amount: number) => this.depositResource(type, amount),
             (node) => this.updateResourceLabel(node),
             (node) => this.handleResourceDepleted(node),
             (position) => this.findNearestResource(position),
@@ -1354,7 +1415,8 @@ export class GameScene extends Phaser.Scene {
 
         if (targetNode) {
             if (targetNode.amount <= 0) {
-                this.showFeedback('This resource node is depleted.');
+                const label = RESOURCE_CONFIGS[targetNode.type].label;
+                this.showFeedback(`${label} node is depleted.`);
                 return;
             }
             this.selectedWorker.assignResource(targetNode);
@@ -1364,13 +1426,41 @@ export class GameScene extends Phaser.Scene {
         this.selectedWorker.moveTo(new Phaser.Math.Vector2(worldX, worldY));
     }
 
-    private createResourceNode(x: number, y: number, amount: number = 100) {
-        const resource = this.add.circle(x, y, 20, 0xffd700);
-        resource.setStrokeStyle(2, 0xffff00);
+    private generateStartingResources() {
+        const clusterConfigs: { type: ResourceType; count: number; distance: number; spread: number }[] = [
+            { type: 'wood', count: 4, distance: 240, spread: 80 },
+            { type: 'stone', count: 3, distance: 320, spread: 70 },
+            { type: 'food', count: 3, distance: 280, spread: 75 },
+        ];
+
+        clusterConfigs.forEach((cluster, index) => {
+            const angle = Phaser.Math.DegToRad((360 / clusterConfigs.length) * index + Phaser.Math.Between(-10, 10));
+            const center = new Phaser.Math.Vector2(
+                this.basePosition.x + Math.cos(angle) * cluster.distance,
+                this.basePosition.y + Math.sin(angle) * cluster.distance,
+            );
+
+            for (let i = 0; i < cluster.count; i += 1) {
+                const offset = new Phaser.Math.Vector2(
+                    Phaser.Math.Between(-cluster.spread, cluster.spread),
+                    Phaser.Math.Between(-cluster.spread, cluster.spread),
+                );
+                this.createResourceNode(center.x + offset.x, center.y + offset.y, cluster.type);
+            }
+        });
+    }
+
+    private createResourceNode(x: number, y: number, type: ResourceType) {
+        const settings = RESOURCE_CONFIGS[type];
+        const amount = settings.startingAmount + Phaser.Math.Between(-20, 20);
+        const strokeColor = Phaser.Display.Color.IntegerToColor(settings.color).brighten(20).color;
+
+        const resource = this.add.circle(x, y, 20, settings.color);
+        resource.setStrokeStyle(2, strokeColor);
         resource.setInteractive({ useHandCursor: true });
 
         const label = this.add
-            .text(x, y - 35, `${amount}`, {
+            .text(x, y - 35, `${settings.label}: ${amount}`, {
                 fontSize: '14px',
                 color: '#ffffff',
                 backgroundColor: '#000000',
@@ -1383,12 +1473,17 @@ export class GameScene extends Phaser.Scene {
             sprite: resource,
             label,
             amount,
+            type,
+            yieldPerTick: settings.yieldPerTick,
+            depletionRate: settings.depletionRate,
+            respawnDelay: settings.respawnDelay,
+            color: settings.color,
         };
 
         resource.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
             if (pointer.rightButtonDown() && this.selectedWorker) {
                 if (node.amount <= 0) {
-                    this.showFeedback('This resource node is depleted.');
+                    this.showFeedback(`${settings.label} node is depleted.`);
                     return;
                 }
                 this.selectedWorker.assignResource(node);
@@ -1420,26 +1515,44 @@ export class GameScene extends Phaser.Scene {
     }
 
     private updateResourceLabel(node: ResourceNode) {
-        node.label.setText(node.amount > 0 ? `${node.amount}` : 'Depleted');
-        const labelColor = node.amount <= 0 ? '#ff6666' : node.amount <= 25 ? '#ffe066' : '#ffffff';
-        node.label.setColor(labelColor);
+        const settings = RESOURCE_CONFIGS[node.type];
+        node.label.setText(`${settings.label}: ${Math.max(0, node.amount)}`);
+        node.label.setColor(node.amount > 0 ? '#ffffff' : '#ffb3b3');
     }
 
     private handleResourceDepleted(node: ResourceNode) {
+        const settings = RESOURCE_CONFIGS[node.type];
+        node.amount = 0;
         node.sprite.disableInteractive();
-        this.updateResourceLabel(node);
-        this.resourceNodes = this.resourceNodes.filter((existingNode) => existingNode.id !== node.id);
-
-        this.showFeedback('A resource node has been depleted. Scouting for new deposits...');
-        this.startResourceRespawnLoop();
+        node.label.setText(`${settings.label}: Depleted`);
+        node.label.setColor('#ff6666');
+        this.showFeedback(`${settings.label} node depleted. Respawning soon...`);
 
         this.workers.forEach((worker) => worker.handleDepletedNode(node));
+
+        if (!node.respawnTimer) {
+            node.respawnTimer = this.time.delayedCall(node.respawnDelay, () => this.respawnResourceNode(node));
+        }
     }
 
-    private depositResource(amount: number) {
-        this.resources += amount;
+    private respawnResourceNode(node: ResourceNode) {
+        const settings = RESOURCE_CONFIGS[node.type];
+        const strokeColor = Phaser.Display.Color.IntegerToColor(settings.color).brighten(20).color;
+        node.amount = settings.startingAmount + Phaser.Math.Between(-20, 20);
+        node.sprite.setFillStyle(settings.color);
+        node.sprite.setStrokeStyle(2, strokeColor);
+        node.sprite.setInteractive({ useHandCursor: true });
+        node.label.setColor('#ffffff');
+        this.updateResourceLabel(node);
+        this.showFeedback(`${settings.label} node has respawned.`);
+        node.respawnTimer = undefined;
+    }
+
+    private depositResource(type: ResourceType, amount: number) {
+        this.resourceTotals[type] += amount;
         this.updateResourceText();
-        this.updateScenarioGoal('resources', this.resources);
+        this.showFeedback(`+${amount} ${RESOURCE_CONFIGS[type].label}`);
+        this.updateScenarioGoal('resources', this.resourceTotals.wood);
     }
 
     private getHarvestMultiplier(position: Phaser.Math.Vector2) {
@@ -1585,7 +1698,7 @@ export class GameScene extends Phaser.Scene {
 
         this.placementPreview.setPosition(snappedX, snappedY);
         const validation = this.validatePlacement(snappedX, snappedY, this.currentPlacement);
-        const hasResources = this.resources >= this.currentPlacement.cost;
+        const hasResources = this.hasSufficientResource('wood', this.currentPlacement.cost);
         const validPlacement = validation.valid && hasResources;
 
         const strokeColor = !hasResources
@@ -1684,13 +1797,13 @@ export class GameScene extends Phaser.Scene {
             return;
         }
 
-        if (this.resources < this.currentPlacement.cost) {
-            this.showFeedback('Insufficient resources to construct this building.');
+        if (!this.hasSufficientResource('wood', this.currentPlacement.cost)) {
+            this.showFeedback('Insufficient wood to construct this building.');
             this.pulseResourceText();
             return;
         }
 
-        this.resources -= this.currentPlacement.cost;
+        this.resourceTotals.wood -= this.currentPlacement.cost;
         this.updateResourceText();
 
         const site = this.createConstructionSite(x, y, this.currentPlacement);
@@ -1719,7 +1832,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     private updateResourceText() {
-        this.resourceText.setText(`Resources: ${this.resources}`);
+        this.resourceText.setText(this.getResourcePanelText());
         this.updateTrainingUI();
     }
 
@@ -1766,7 +1879,7 @@ export class GameScene extends Phaser.Scene {
         const queueCount = queue.pending + (queue.activeTimer ? 1 : 0);
         const capacityReached = this.currentPopulation >= this.populationCap;
         const type = this.getSelectedWorkerType();
-        const hasResources = this.resources >= type.cost;
+        const hasResources = this.hasSufficientResource('wood', type.cost);
         const canTrain = hasResources && !capacityReached;
 
         this.setSpawnWorkerButtonState(`Train ${type.name} (${type.cost}) - ${buildingName}`, canTrain);
@@ -1934,7 +2047,7 @@ export class GameScene extends Phaser.Scene {
         this.constructionSites = this.constructionSites.filter((candidate) => candidate !== site);
         site.container.destroy();
         site.assignedWorker?.releaseFromConstruction();
-        this.resources += site.config.cost;
+        this.resourceTotals.wood += site.config.cost;
         this.updateResourceText();
         this.showFeedback('Construction cancelled. Resources refunded.');
     }
@@ -2010,7 +2123,7 @@ export class GameScene extends Phaser.Scene {
                 delay: 1000,
                 loop: true,
                 callback: () => {
-                    this.resources += Math.round(incomePerMs * 1000);
+                    this.resourceTotals.wood += Math.round(incomePerMs * 1000);
                     this.updateResourceText();
                 },
             });

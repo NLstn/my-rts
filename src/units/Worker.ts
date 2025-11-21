@@ -11,19 +11,25 @@ export const WorkerState = {
 
 export type WorkerStateType = typeof WorkerState[keyof typeof WorkerState];
 
+export type ResourceType = 'wood' | 'stone' | 'food';
+
 export interface ResourceNode {
     id: number;
     sprite: Phaser.GameObjects.Arc;
     label: Phaser.GameObjects.Text;
     amount: number;
+    type: ResourceType;
+    yieldPerTick: number;
+    depletionRate: number;
+    respawnDelay: number;
+    color: number;
+    respawnTimer?: Phaser.Time.TimerEvent;
 }
 
 export class Worker extends Phaser.GameObjects.Rectangle {
     public state: WorkerStateType = WorkerState.Idle;
 
     private speed: number = 140;
-
-    private harvestRate: number = 5;
 
     private capacity: number = 25;
 
@@ -53,7 +59,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private readonly getDropOffTargets: () => Phaser.Math.Vector2[];
 
-    private readonly onDeposit: (amount: number) => void;
+    private readonly onDeposit: (type: ResourceType, amount: number) => void;
 
     private readonly onResourceUpdate: (node: ResourceNode) => void;
 
@@ -73,7 +79,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         y: number,
         gridSize: number,
         getDropOffTargets: () => Phaser.Math.Vector2[],
-        onDeposit: (amount: number) => void,
+        onDeposit: (type: ResourceType, amount: number) => void,
         onResourceUpdate: (node: ResourceNode) => void,
         onResourceDepleted: (node: ResourceNode) => void,
         findNearestResource: (position: Phaser.Math.Vector2) => ResourceNode | undefined,
@@ -289,10 +295,11 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         const harvestMultiplier = this.harvestMultiplierProvider(
             new Phaser.Math.Vector2(this.targetNode.sprite.x, this.targetNode.sprite.y),
         );
-        const boostedRate = Math.max(1, Math.round(this.harvestRate * harvestMultiplier));
-        const harvested = Math.min(boostedRate, this.targetNode.amount, availableCapacity);
+        const depletion = Math.min(this.targetNode.depletionRate, this.targetNode.amount);
+        const baseYield = Math.min(depletion, this.targetNode.yieldPerTick, availableCapacity);
+        const harvested = Math.max(1, Math.round(baseYield * harvestMultiplier));
         this.carried += harvested;
-        this.targetNode.amount -= harvested;
+        this.targetNode.amount -= depletion;
 
         this.onResourceUpdate(this.targetNode);
 
@@ -360,8 +367,8 @@ export class Worker extends Phaser.GameObjects.Rectangle {
     }
 
     private depositResources() {
-        if (this.carried > 0) {
-            this.onDeposit(this.carried);
+        if (this.carried > 0 && this.targetNode) {
+            this.onDeposit(this.targetNode.type, this.carried);
         }
         this.carried = 0;
         this.targetNode = undefined;
@@ -376,7 +383,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         }
 
         if (this.targetNode) {
-            const fillColor = this.targetNode.amount <= 0 ? 0x777755 : 0xffd700;
+            const fillColor = this.targetNode.amount <= 0 ? 0x777755 : this.targetNode.color;
             this.targetNode.sprite.setFillStyle(fillColor);
         }
     }
