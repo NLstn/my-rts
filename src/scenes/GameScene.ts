@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import { Building, type BuildingConfig } from '../buildings/Building';
+import { Barracks } from '../buildings/Barracks';
+import { Base } from '../buildings/Base';
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
@@ -9,17 +12,6 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.6;
 const ZOOM_STEP = 0.0015;
 
-type BuildingType = 'hq' | 'military' | 'utility';
-
-interface BuildingConfig {
-    name: string;
-    width: number;
-    height: number;
-    color: number;
-    cost: number;
-    type: BuildingType;
-}
-
 export class GameScene extends Phaser.Scene {
     private resources: number = 100;
     private resourceText!: Phaser.GameObjects.Text;
@@ -28,22 +20,9 @@ export class GameScene extends Phaser.Scene {
     private readonly gridSize = 50;
     private placementPreview?: Phaser.GameObjects.Rectangle;
     private placementInfoText?: Phaser.GameObjects.Text;
-    private confirmButton?: Phaser.GameObjects.Text;
-    private cancelButton?: Phaser.GameObjects.Text;
     private feedbackText?: Phaser.GameObjects.Text;
     private currentPlacement?: BuildingConfig;
-    private placedBuildings: Phaser.GameObjects.Rectangle[] = [];
-
-    private readonly buildingConfigs: BuildingConfig[] = [
-        {
-            name: 'Barracks',
-            width: 100,
-            height: 80,
-            color: 0x3366ff,
-            cost: 50,
-            type: 'military',
-        },
-    ];
+    private placedBuildings: Building[] = [];
 
     constructor() {
         super({ key: 'GameScene' });
@@ -64,14 +43,9 @@ export class GameScene extends Phaser.Scene {
         this.createUI();
 
         // Sample base building
-        this.createBuilding({
-            name: 'Base',
-            width: 80,
-            height: 80,
-            color: 0x8b4513,
-            cost: 0,
-            type: 'hq',
-        }, 200, 200);
+        const baseBuilding = new Base(this);
+        baseBuilding.create(200, 200);
+        this.placedBuildings.push(baseBuilding);
 
         // Sample resource nodes
         this.createResourceNode(600, 300);
@@ -81,9 +55,30 @@ export class GameScene extends Phaser.Scene {
             this.updatePlacementPreview(pointer);
         });
 
+        // Left click to place building (use pointerup to fire after UI button clicks)
+        this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+            // Only place if we're in placement mode and didn't click on an interactive object
+            if (pointer.leftButtonReleased() && this.currentPlacement) {
+                // Check if we clicked on any game object (UI, buildings, resources)
+                const hitObjects = this.input.hitTestPointer(pointer);
+                const clickedOnUI = hitObjects.some(obj => obj.input && obj.input.cursor === 'pointer');
+
+                if (!clickedOnUI) {
+                    this.confirmPlacement();
+                }
+            }
+        });
+
+        // Right click to cancel placement
+        this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+            if (pointer.rightButtonReleased() && this.currentPlacement) {
+                this.cancelPlacement();
+            }
+        });
+
         // Instructions
         this.add
-            .text(10, height - 30, 'Click to select buildings | Collect resources to expand your base', {
+            .text(10, height - 30, 'Left-click to place | Right-click to cancel | Collect resources to expand', {
                 fontSize: '14px',
                 color: '#ffffff',
                 backgroundColor: '#000000',
@@ -139,7 +134,8 @@ export class GameScene extends Phaser.Scene {
             .setOrigin(1, 0)
             .setScrollFactor(0);
 
-        const barracksConfig = this.buildingConfigs[0];
+        const barracks = new Barracks(this);
+        const barracksConfig = barracks.getConfig();
 
         const buildButton = this.add
             .text(width - 10, 40, `Build ${barracksConfig.name} (${barracksConfig.cost})`, {
@@ -200,60 +196,6 @@ export class GameScene extends Phaser.Scene {
             .setOrigin(0.5, 0)
             .setScrollFactor(0)
             .setVisible(false);
-
-        this.confirmButton = this.createPlacementButton(width / 2 - 80, 70, 'Confirm', () => {
-            this.confirmPlacement();
-        });
-
-        this.cancelButton = this.createPlacementButton(width / 2 + 20, 70, 'Cancel', () => {
-            this.cancelPlacement();
-        });
-    }
-
-    private createPlacementButton(x: number, y: number, label: string, onClick: () => void) {
-        const button = this.add
-            .text(x, y, label, {
-                fontSize: '14px',
-                color: '#ffffff',
-                backgroundColor: '#444444',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true })
-            .setVisible(false);
-
-        button.on('pointerover', () => button.setStyle({ backgroundColor: '#666666' }));
-        button.on('pointerout', () => button.setStyle({ backgroundColor: '#444444' }));
-        button.on('pointerdown', onClick);
-
-        return button;
-    }
-
-    private createBuilding(config: BuildingConfig, x: number, y: number) {
-        const building = this.add.rectangle(x, y, config.width, config.height, config.color);
-        building.setStrokeStyle(2, 0xffffff);
-        building.setInteractive({ useHandCursor: true });
-
-        this.add
-            .text(x, y, `${config.name}\n(${config.type})`, {
-                fontSize: '12px',
-                color: '#ffffff',
-                align: 'center',
-            })
-            .setOrigin(0.5);
-
-        building.on('pointerdown', () => {
-            console.log(`Selected: ${config.name}`);
-            this.tweens.add({
-                targets: building,
-                scaleX: 1.1,
-                scaleY: 1.1,
-                duration: 100,
-                yoyo: true,
-            });
-        });
-
-        this.placedBuildings.push(building);
     }
 
     private createResourceNode(x: number, y: number) {
@@ -332,10 +274,8 @@ export class GameScene extends Phaser.Scene {
     private startPlacement(config: BuildingConfig) {
         this.currentPlacement = config;
         this.feedbackText?.setVisible(false);
-        this.placementInfoText?.setText(`Placing ${config.name} | Cost: ${config.cost}`);
+        this.placementInfoText?.setText(`Placing ${config.name} | Cost: ${config.cost} | Left-click to place, Right-click to cancel`);
         this.placementInfoText?.setVisible(true);
-        this.confirmButton?.setVisible(true);
-        this.cancelButton?.setVisible(true);
 
         if (!this.placementPreview) {
             this.placementPreview = this.add.rectangle(0, 0, config.width, config.height, config.color, 0.35);
@@ -384,7 +324,9 @@ export class GameScene extends Phaser.Scene {
         );
 
         return this.placedBuildings.some((building) => {
-            const bounds = building.getBounds();
+            const sprite = building.getSprite();
+            if (!sprite) return false;
+            const bounds = sprite.getBounds();
             return Phaser.Geom.Intersects.RectangleToRectangle(previewBounds, bounds);
         });
     }
@@ -409,15 +351,26 @@ export class GameScene extends Phaser.Scene {
 
         this.resources -= this.currentPlacement.cost;
         this.resourceText.setText(`Resources: ${this.resources}`);
-        this.createBuilding(this.currentPlacement, x, y);
+
+        // Create the appropriate building type
+        let newBuilding: Building;
+        if (this.currentPlacement.name === 'Barracks') {
+            newBuilding = new Barracks(this);
+        } else if (this.currentPlacement.name === 'Base') {
+            newBuilding = new Base(this);
+        } else {
+            // Fallback - default to Barracks for unknown types
+            newBuilding = new Barracks(this);
+        }
+        newBuilding.create(x, y);
+        this.placedBuildings.push(newBuilding);
+
         this.cancelPlacement();
     }
 
     private cancelPlacement() {
         this.currentPlacement = undefined;
         this.placementPreview?.setVisible(false);
-        this.confirmButton?.setVisible(false);
-        this.cancelButton?.setVisible(false);
         this.placementInfoText?.setVisible(false);
         this.feedbackText?.setVisible(false);
     }
