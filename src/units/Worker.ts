@@ -5,6 +5,8 @@ export const WorkerState = {
     Moving: 'moving',
     Harvesting: 'harvesting',
     Returning: 'returning',
+    MovingToBuild: 'movingToBuild',
+    Building: 'building',
 } as const;
 
 export type WorkerStateType = typeof WorkerState[keyof typeof WorkerState];
@@ -43,6 +45,12 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     private readonly onResourceDepleted: (node: ResourceNode) => void;
 
+    private buildTarget?: {
+        position: Phaser.Math.Vector2;
+        onArrive: () => void;
+        onCancel: () => void;
+    };
+
     constructor(
         scene: Phaser.Scene,
         x: number,
@@ -78,6 +86,7 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     public assignResource(node: ResourceNode) {
         this.stopHarvesting();
+        this.clearBuildTarget();
         this.targetNode = node;
         this.state = WorkerState.Moving;
         this.buildPathTo(node.sprite.x, node.sprite.y);
@@ -85,13 +94,42 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
     public moveTo(target: Phaser.Math.Vector2) {
         this.stopHarvesting();
+        this.clearBuildTarget();
         this.targetNode = undefined;
         this.state = WorkerState.Moving;
         this.buildPathTo(target.x, target.y);
     }
 
+    public assignConstruction(target: Phaser.Math.Vector2, onArrive: () => void, onCancel: () => void) {
+        this.stopHarvesting();
+        this.buildTarget = {
+            position: target.clone(),
+            onArrive,
+            onCancel,
+        };
+        this.state = WorkerState.MovingToBuild;
+        this.buildPathTo(target.x, target.y);
+    }
+
+    public releaseFromConstruction() {
+        this.buildTarget = undefined;
+        this.state = WorkerState.Idle;
+        this.waypoints = [];
+        (this.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+    }
+
+    public cancelConstructionAssignment() {
+        if (this.buildTarget) {
+            this.buildTarget.onCancel();
+        }
+        this.buildTarget = undefined;
+        this.state = WorkerState.Idle;
+        this.waypoints = [];
+        (this.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+    }
+
     public update() {
-        if (this.state === WorkerState.Harvesting || this.state === WorkerState.Idle) {
+        if (this.state === WorkerState.Harvesting || this.state === WorkerState.Idle || this.state === WorkerState.Building) {
             return;
         }
 
@@ -128,6 +166,12 @@ export class Worker extends Phaser.GameObjects.Rectangle {
 
         if (this.state === WorkerState.Returning) {
             this.depositResources();
+            return;
+        }
+
+        if (this.state === WorkerState.MovingToBuild && this.buildTarget) {
+            this.state = WorkerState.Building;
+            this.buildTarget.onArrive();
             return;
         }
 
@@ -228,6 +272,13 @@ export class Worker extends Phaser.GameObjects.Rectangle {
         if (this.targetNode) {
             const fillColor = this.targetNode.amount <= 0 ? 0x777755 : 0xffd700;
             this.targetNode.sprite.setFillStyle(fillColor);
+        }
+    }
+
+    private clearBuildTarget() {
+        this.buildTarget = undefined;
+        if (this.state === WorkerState.MovingToBuild || this.state === WorkerState.Building) {
+            this.state = WorkerState.Idle;
         }
     }
 
