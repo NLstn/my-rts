@@ -9,4 +9,7 @@ export default defineConfig({
       clientPort: 5173, // Ensure HMR uses the forwarded port
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1500, // Phaser is ~1.2MB, adjust threshold to suppress warning
+  },
 });
