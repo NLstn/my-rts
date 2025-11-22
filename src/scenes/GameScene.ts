@@ -782,16 +782,19 @@ export class GameScene extends Phaser.Scene {
             moveY += KEYBOARD_PAN_SPEED;
         }
 
-        if (pointer.x <= EDGE_SCROLL_THRESHOLD) {
-            moveX -= EDGE_SCROLL_SPEED;
-        } else if (pointer.x >= this.scale.width - EDGE_SCROLL_THRESHOLD) {
-            moveX += EDGE_SCROLL_SPEED;
-        }
+        // Only allow edge scrolling when the game has focus
+        if (this.game.hasFocus) {
+            if (pointer.x <= EDGE_SCROLL_THRESHOLD) {
+                moveX -= EDGE_SCROLL_SPEED;
+            } else if (pointer.x >= this.scale.width - EDGE_SCROLL_THRESHOLD) {
+                moveX += EDGE_SCROLL_SPEED;
+            }
 
-        if (pointer.y <= EDGE_SCROLL_THRESHOLD) {
-            moveY -= EDGE_SCROLL_SPEED;
-        } else if (pointer.y >= this.scale.height - EDGE_SCROLL_THRESHOLD) {
-            moveY += EDGE_SCROLL_SPEED;
+            if (pointer.y <= EDGE_SCROLL_THRESHOLD) {
+                moveY -= EDGE_SCROLL_SPEED;
+            } else if (pointer.y >= this.scale.height - EDGE_SCROLL_THRESHOLD) {
+                moveY += EDGE_SCROLL_SPEED;
+            }
         }
 
         if (this.zoomKeys.Q.isDown) {
