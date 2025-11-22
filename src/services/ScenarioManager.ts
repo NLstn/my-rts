@@ -14,6 +14,7 @@ export interface ScenarioManagerConfig {
     durationMs: number;
     goals: ScenarioGoal[];
     onGoalCompleted?: (description: string) => void;
+    scenarioMenuContainer?: Phaser.GameObjects.Container;
 }
 
 export class ScenarioManager {
@@ -27,6 +28,7 @@ export class ScenarioManager {
     private readonly goals: ScenarioGoal[];
     private readonly durationMs: number;
     private readonly onGoalCompleted?: (description: string) => void;
+    private readonly scenarioMenuContainer?: Phaser.GameObjects.Container;
 
     private endTime: number;
     private completed: boolean = false;
@@ -42,6 +44,7 @@ export class ScenarioManager {
         this.durationMs = config.durationMs;
         this.goals = config.goals.map((goal) => ({ ...goal }));
         this.onGoalCompleted = config.onGoalCompleted;
+        this.scenarioMenuContainer = config.scenarioMenuContainer;
 
         this.endTime = this.scene.time.now + this.durationMs;
         this.createScenarioPanel();
@@ -105,63 +108,110 @@ export class ScenarioManager {
     }
 
     private createScenarioPanel() {
-        this.scenarioPanel = this.scene.add
-            .container(10, ScenarioManager.PANEL_Y_POSITION)
-            .setScrollFactor(0);
+        const panelWidth = 320;
+        const startX = 10;
+        const startY = 45;
 
-        this.scenarioPanelBackground = this.scene.add
-            .rectangle(0, 0, ScenarioManager.PANEL_WIDTH, 200, 0x000000, 0.55)
-            .setOrigin(0, 0);
-
-        const title = this.scene.add.text(10, 6, 'Scenario Goals', {
-            fontSize: '16px',
-            color: '#f0f8ff',
-            fontStyle: 'bold',
-        });
-
-        this.scenarioPanel.add([this.scenarioPanelBackground, title]);
-
-        this.goalTextMap.clear();
-        let offsetY = ScenarioManager.HEADER_HEIGHT;
-        this.goals.forEach((goal) => {
-            const text = this.scene.add.text(10, offsetY, '', {
-                fontSize: '13px',
-                color: '#ffffff',
-                wordWrap: { width: ScenarioManager.PANEL_WIDTH - 20 },
+        // If we have a scenario menu container, add directly to it (collapsed menu)
+        // Otherwise create standalone panel (fallback)
+        if (this.scenarioMenuContainer) {
+            const title = this.scene.add.text(startX, startY, 'Scenario Goals', {
+                fontSize: '16px',
+                color: '#f0f8ff',
+                fontStyle: 'bold',
             });
-            this.goalTextMap.set(goal.id, text);
-            this.scenarioPanel?.add(text);
-            offsetY += ScenarioManager.GOAL_LINE_HEIGHT;
-        });
+            this.scenarioMenuContainer.add(title);
 
-        this.scenarioTimerText = this.scene.add.text(10, offsetY + 4, '', {
-            fontSize: '12px',
-            color: '#dcdcdc',
-        });
-        this.scenarioPanel.add(this.scenarioTimerText);
+            this.goalTextMap.clear();
+            let offsetY = startY + 28;
+            this.goals.forEach((goal) => {
+                const text = this.scene.add.text(startX, offsetY, '', {
+                    fontSize: '13px',
+                    color: '#ffffff',
+                    wordWrap: { width: panelWidth - 20 },
+                });
+                this.goalTextMap.set(goal.id, text);
+                this.scenarioMenuContainer?.add(text);
+                offsetY += 24;
+            });
 
-        this.scenarioPanelBackground.height = offsetY + ScenarioManager.PANEL_PADDING;
+            this.scenarioTimerText = this.scene.add.text(startX, offsetY + 4, '', {
+                fontSize: '12px',
+                color: '#dcdcdc',
+            });
+            this.scenarioMenuContainer.add(this.scenarioTimerText);
+        } else {
+            // Fallback: standalone panel
+            const headerHeight = 28;
+            this.scenarioPanel = this.scene.add.container(10, 140).setScrollFactor(0);
+
+            this.scenarioPanelBackground = this.scene.add
+                .rectangle(0, 0, panelWidth, 200, 0x000000, 0.55)
+                .setOrigin(0, 0);
+
+            const title = this.scene.add.text(10, 6, 'Scenario Goals', {
+                fontSize: '16px',
+                color: '#f0f8ff',
+                fontStyle: 'bold',
+            });
+
+            this.scenarioPanel.add([this.scenarioPanelBackground, title]);
+
+            this.goalTextMap.clear();
+            let offsetY = headerHeight;
+            this.goals.forEach((goal) => {
+                const text = this.scene.add.text(10, offsetY, '', {
+                    fontSize: '13px',
+                    color: '#ffffff',
+                    wordWrap: { width: panelWidth - 20 },
+                });
+                this.goalTextMap.set(goal.id, text);
+                this.scenarioPanel?.add(text);
+                offsetY += 24;
+            });
+
+            this.scenarioTimerText = this.scene.add.text(10, offsetY + 4, '', {
+                fontSize: '12px',
+                color: '#dcdcdc',
+            });
+            this.scenarioPanel.add(this.scenarioTimerText);
+
+            this.scenarioPanelBackground.height = offsetY + 36;
+        }
     }
 
     private refreshGoalPanel() {
-        let offsetY = ScenarioManager.HEADER_HEIGHT;
-        this.goals.forEach((goal) => {
-            const text = this.goalTextMap.get(goal.id);
-            if (!text) return;
+        if (this.scenarioMenuContainer) {
+            // Goals in collapsible menu - no need to adjust heights
+            this.goals.forEach((goal) => {
+                const text = this.goalTextMap.get(goal.id);
+                if (!text) return;
 
-            const progress = `${Math.min(goal.current, goal.target)}/${goal.target}`;
-            text.setText(`${goal.description}: ${progress}${goal.completed ? ' ✓' : ''}`);
-            text.setColor(goal.completed ? '#9cff9c' : '#ffffff');
-            text.y = offsetY;
-            offsetY += ScenarioManager.GOAL_LINE_HEIGHT;
-        });
+                const progress = `${Math.min(goal.current, goal.target)}/${goal.target}`;
+                text.setText(`${goal.description}: ${progress}${goal.completed ? ' ✓' : ''}`);
+                text.setColor(goal.completed ? '#9cff9c' : '#ffffff');
+            });
+        } else {
+            // Standalone panel - adjust heights dynamically
+            let offsetY = 28;
+            this.goals.forEach((goal) => {
+                const text = this.goalTextMap.get(goal.id);
+                if (!text) return;
 
-        if (this.scenarioTimerText) {
-            this.scenarioTimerText.y = offsetY + 4;
-        }
+                const progress = `${Math.min(goal.current, goal.target)}/${goal.target}`;
+                text.setText(`${goal.description}: ${progress}${goal.completed ? ' ✓' : ''}`);
+                text.setColor(goal.completed ? '#9cff9c' : '#ffffff');
+                text.y = offsetY;
+                offsetY += 24;
+            });
 
-        if (this.scenarioPanelBackground) {
-            this.scenarioPanelBackground.height = offsetY + ScenarioManager.PANEL_PADDING;
+            if (this.scenarioTimerText) {
+                this.scenarioTimerText.y = offsetY + 4;
+            }
+
+            if (this.scenarioPanelBackground) {
+                this.scenarioPanelBackground.height = offsetY + 36;
+            }
         }
     }
 

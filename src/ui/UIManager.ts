@@ -2,19 +2,6 @@ import Phaser from 'phaser';
 import { type BuildingConfig } from '../buildings/Building';
 import { type ResourceType } from '../units/Worker';
 
-export interface ResearchOption {
-    id: string;
-    name: string;
-    description: string;
-    cost: number;
-    duration: number;
-    requiresBuilding?: string;
-    status: 'locked' | 'available' | 'inProgress' | 'completed';
-    remainingTime?: number;
-    timer?: Phaser.Time.TimerEvent;
-    onComplete: () => void;
-}
-
 interface UIManagerCallbacks {
     onMainMenu: () => void;
     onStartPlacement: (config: BuildingConfig) => void;
@@ -23,64 +10,99 @@ interface UIManagerCallbacks {
     onGatherNearest: () => void;
     onToggleAutoGather: () => void;
     onCycleWorkerType: () => void;
-    onStartResearch: (id: string) => void;
 }
 
 export class UIManager {
     private scene: Phaser.Scene;
     private callbacks: UIManagerCallbacks;
+    private statsContainer!: Phaser.GameObjects.Container;
     private resourceText!: Phaser.GameObjects.Text;
     private populationText!: Phaser.GameObjects.Text;
-    private spawnWorkerButton!: Phaser.GameObjects.Text;
-    private trainingStatusText!: Phaser.GameObjects.Text;
-    private workerTypeToggle!: Phaser.GameObjects.Text;
-    private autoGatherButton!: Phaser.GameObjects.Text;
+    private scoreText!: Phaser.GameObjects.Text;
+    private spawnWorkerButton?: Phaser.GameObjects.Text;
+    private trainingStatusText?: Phaser.GameObjects.Text;
+    private workerTypeToggle?: Phaser.GameObjects.Text;
+    private autoGatherButton?: Phaser.GameObjects.Text;
+    private idleWorkerButton?: Phaser.GameObjects.Text;
+    private gatherNearestButton?: Phaser.GameObjects.Text;
     private placementInfoText?: Phaser.GameObjects.Text;
     private feedbackText?: Phaser.GameObjects.Text;
-    private researchButtons: Map<string, Phaser.GameObjects.Text> = new Map();
     private autoGatherEnabled: boolean = false;
+    private buildMenuContainer?: Phaser.GameObjects.Container;
+    private scenarioMenuContainer?: Phaser.GameObjects.Container;
+    private researchMenuContainer?: Phaser.GameObjects.Container;
+    private buildMenuVisible: boolean = false;
+    private scenarioMenuVisible: boolean = false;
+    private researchMenuVisible: boolean = false;
+    private trainingUIContainer?: Phaser.GameObjects.Container;
 
     constructor(scene: Phaser.Scene, callbacks: UIManagerCallbacks) {
         this.scene = scene;
         this.callbacks = callbacks;
     }
 
-    createHUD(buildMenuConfigs: BuildingConfig[], researchOptions: ResearchOption[]) {
+    createHUD(buildMenuConfigs: BuildingConfig[]) {
         const { width } = this.scene.cameras.main;
 
-        this.resourceText = this.scene.add
-            .text(width - 10, 10, '', {
-                fontSize: '18px',
-                color: '#ffff00',
-                backgroundColor: '#000000',
-                padding: { x: 10, y: 5 },
-                lineSpacing: 4,
-            })
-            .setOrigin(1, 0)
-            .setScrollFactor(0)
-            .setDepth(1000);
-
-        this.populationText = this.scene.add
-            .text(width - 10, 40, '', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#000000',
-                padding: { x: 8, y: 4 },
-            })
-            .setOrigin(1, 0)
-            .setScrollFactor(0)
-            .setDepth(1000);
-
-        this.createBuildMenu(width - 10, 70, buildMenuConfigs);
-        this.createMenuButton();
-        this.createWorkerControls();
+        this.createStatsPanel(width);
+        this.createMenuBar(buildMenuConfigs);
         this.createPlacementFeedback(width);
-        this.createResearchUI(researchOptions);
+    }
+
+    private createStatsPanel(screenWidth: number) {
+        this.statsContainer = this.scene.add
+            .container(screenWidth - 10, 10)
+            .setScrollFactor(0)
+            .setDepth(1000);
+
+        // Background panel
+        const panelWidth = 180;
+        const panelHeight = 120;
+        const background = this.scene.add
+            .rectangle(0, 0, panelWidth, panelHeight, 0x000000, 0.85)
+            .setOrigin(1, 0)
+            .setStrokeStyle(2, 0xffff00);
+
+        // Title
+        const title = this.scene.add
+            .text(-10, 8, 'Stats', {
+                fontSize: '14px',
+                color: '#ffff00',
+                fontStyle: 'bold',
+            })
+            .setOrigin(1, 0);
+
+        // Resources section
+        this.resourceText = this.scene.add
+            .text(-10, 30, '', {
+                fontSize: '13px',
+                color: '#ffffff',
+                lineSpacing: 3,
+            })
+            .setOrigin(1, 0);
+
+        // Population
+        this.populationText = this.scene.add
+            .text(-10, 80, '', {
+                fontSize: '13px',
+                color: '#add8e6',
+            })
+            .setOrigin(1, 0);
+
+        // Score (initially hidden, can be shown later)
+        this.scoreText = this.scene.add
+            .text(-10, 98, '', {
+                fontSize: '12px',
+                color: '#cccccc',
+            })
+            .setOrigin(1, 0)
+            .setVisible(false);
+
+        this.statsContainer.add([background, title, this.resourceText, this.populationText, this.scoreText]);
     }
 
     updateResourceTotals(resourceTotals: Record<ResourceType, number>) {
         const text = [
-            'Resources',
             `Wood: ${resourceTotals.wood}`,
             `Stone: ${resourceTotals.stone}`,
             `Food: ${resourceTotals.food}`,
@@ -94,11 +116,13 @@ export class UIManager {
     }
 
     setWorkerTypeLabel(label: string, canCycle: boolean) {
+        if (!this.workerTypeToggle) return;
         this.workerTypeToggle.setText(label);
         this.workerTypeToggle.setStyle({ backgroundColor: canCycle ? '#2e8b57' : '#1f4d36' });
     }
 
     setTrainingButton(label: string, enabled: boolean) {
+        if (!this.spawnWorkerButton) return;
         this.spawnWorkerButton.setText(label);
 
         if (enabled) {
@@ -112,11 +136,13 @@ export class UIManager {
     }
 
     setTrainingStatus(text: string) {
+        if (!this.trainingStatusText) return;
         this.trainingStatusText.setText(text);
     }
 
     setAutoGatherEnabled(enabled: boolean) {
         this.autoGatherEnabled = enabled;
+        if (!this.autoGatherButton) return;
         this.autoGatherButton.setText(`Auto Gather: ${enabled ? 'On' : 'Off'}`);
         this.autoGatherButton.setStyle({ backgroundColor: enabled ? '#5f9e3c' : '#444444' });
     }
@@ -143,72 +169,182 @@ export class UIManager {
         }
     }
 
-    updateResearchOption(option: ResearchOption) {
-        const button = this.researchButtons.get(option.id);
-        if (!button) return;
-
-        const baseText = `${option.name} (${option.cost})\n${option.description}`;
-
-        if (option.status === 'completed') {
-            button.setText(`${baseText}\nCompleted`);
-            button.setStyle({ backgroundColor: '#2f6f3f', color: '#d3ffd3' });
-            button.disableInteractive();
-            return;
-        }
-
-        if (option.status === 'inProgress') {
-            const remainingSeconds = (option.remainingTime ?? 0) / 1000;
-            button.setText(`${baseText}\nResearching... ${remainingSeconds.toFixed(1)}s`);
-            button.setStyle({ backgroundColor: '#9466c4', color: '#ffffff' });
-            button.disableInteractive();
-            return;
-        }
-
-        if (option.status === 'available') {
-            button.setText(`${baseText}\nClick to research (${option.duration / 1000}s)`);
-            button.setStyle({ backgroundColor: '#5a3e85', color: '#ffffff' });
-            button.setInteractive({ useHandCursor: true });
-            return;
-        }
-
-        button.setText(`${baseText}\nRequires ${option.requiresBuilding}`);
-        button.setStyle({ backgroundColor: '#3d2b5c', color: '#bbbbbb' });
-        button.disableInteractive();
+    updateScore(score: number) {
+        this.scoreText.setText(`Score: ${score}`);
+        this.scoreText.setVisible(true);
     }
-
 
     pulseResourceText() {
         this.scene.tweens.add({
-            targets: this.resourceText,
-            tint: 0xff0000,
+            targets: this.statsContainer,
+            alpha: 0.6,
             duration: 150,
             yoyo: true,
             repeat: 2,
         });
     }
 
-    private createBuildMenu(anchorX: number, startY: number, buildMenuConfigs: BuildingConfig[]) {
+    private createMenuBar(buildMenuConfigs: BuildingConfig[]) {
+        const mainMenuButton = this.scene.add
+            .text(10, 10, 'Main Menu', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#333333',
+                padding: { x: 10, y: 5 },
+            })
+            .setScrollFactor(0)
+            .setDepth(1000)
+            .setInteractive({ useHandCursor: true });
+
+        mainMenuButton.on('pointerover', () => {
+            mainMenuButton.setStyle({ backgroundColor: '#555555' });
+        });
+
+        mainMenuButton.on('pointerout', () => {
+            mainMenuButton.setStyle({ backgroundColor: '#333333' });
+        });
+
+        mainMenuButton.on('pointerdown', () => {
+            this.callbacks.onMainMenu();
+        });
+
+        // Build menu button
+        const buildMenuButton = this.scene.add
+            .text(110, 10, 'Build', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#004c99',
+                padding: { x: 10, y: 5 },
+            })
+            .setScrollFactor(0)
+            .setDepth(1000)
+            .setInteractive({ useHandCursor: true });
+
+        buildMenuButton.on('pointerover', () => {
+            buildMenuButton.setStyle({ backgroundColor: '#005fb3' });
+        });
+
+        buildMenuButton.on('pointerout', () => {
+            buildMenuButton.setStyle({ backgroundColor: this.buildMenuVisible ? '#005fb3' : '#004c99' });
+        });
+
+        buildMenuButton.on('pointerdown', () => {
+            this.toggleBuildMenu();
+        });
+
+        // Scenario menu button
+        const scenarioMenuButton = this.scene.add
+            .text(180, 10, 'Scenario', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#228b22',
+                padding: { x: 10, y: 5 },
+            })
+            .setScrollFactor(0)
+            .setDepth(1000)
+            .setInteractive({ useHandCursor: true });
+
+        scenarioMenuButton.on('pointerover', () => {
+            scenarioMenuButton.setStyle({ backgroundColor: '#2fa82f' });
+        });
+
+        scenarioMenuButton.on('pointerout', () => {
+            scenarioMenuButton.setStyle({ backgroundColor: this.scenarioMenuVisible ? '#2fa82f' : '#228b22' });
+        });
+
+        scenarioMenuButton.on('pointerdown', () => {
+            this.toggleScenarioMenu();
+        });
+
+        // Research menu button
+        const researchMenuButton = this.scene.add
+            .text(280, 10, 'Research', {
+                fontSize: '16px',
+                color: '#ffffff',
+                backgroundColor: '#5a3e85',
+                padding: { x: 10, y: 5 },
+            })
+            .setScrollFactor(0)
+            .setDepth(1000)
+            .setInteractive({ useHandCursor: true });
+
+        researchMenuButton.on('pointerover', () => {
+            researchMenuButton.setStyle({ backgroundColor: '#6f4ca0' });
+        });
+
+        researchMenuButton.on('pointerout', () => {
+            researchMenuButton.setStyle({ backgroundColor: this.researchMenuVisible ? '#6f4ca0' : '#5a3e85' });
+        });
+
+        researchMenuButton.on('pointerdown', () => {
+            this.toggleResearchMenu();
+        });
+
+        this.createBuildMenu(buildMenuConfigs);
+        this.createScenarioMenu();
+        this.createResearchMenu();
+    }
+
+    private toggleBuildMenu() {
+        this.buildMenuVisible = !this.buildMenuVisible;
+        if (this.buildMenuContainer) {
+            this.buildMenuContainer.setVisible(this.buildMenuVisible);
+        }
+        if (this.buildMenuVisible) {
+            if (this.scenarioMenuVisible) this.toggleScenarioMenu();
+            if (this.researchMenuVisible) this.toggleResearchMenu();
+        }
+    }
+
+    private toggleScenarioMenu() {
+        this.scenarioMenuVisible = !this.scenarioMenuVisible;
+        if (this.scenarioMenuContainer) {
+            this.scenarioMenuContainer.setVisible(this.scenarioMenuVisible);
+        }
+        if (this.scenarioMenuVisible) {
+            if (this.buildMenuVisible) this.toggleBuildMenu();
+            if (this.researchMenuVisible) this.toggleResearchMenu();
+        }
+    }
+
+    private toggleResearchMenu() {
+        this.researchMenuVisible = !this.researchMenuVisible;
+        if (this.researchMenuContainer) {
+            this.researchMenuContainer.setVisible(this.researchMenuVisible);
+        }
+        if (this.researchMenuVisible) {
+            if (this.buildMenuVisible) this.toggleBuildMenu();
+            if (this.scenarioMenuVisible) this.toggleScenarioMenu();
+        }
+    }
+
+    private createBuildMenu(buildMenuConfigs: BuildingConfig[]) {
+        const startX = 10;
+        const startY = 45;
         const spacing = 48;
-        const buttonWidth = 240;
+        const buttonWidth = 280;
         const buttonHeight = 40;
+
+        this.buildMenuContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1000).setVisible(false);
+        const container = this.buildMenuContainer;
 
         buildMenuConfigs.forEach((config, index) => {
             const y = startY + index * spacing;
-            const buttonContainer = this.scene.add.container(anchorX, y).setScrollFactor(0).setDepth(1000);
+            const buttonContainer = this.scene.add.container(startX, y);
 
             const background = this.scene.add
                 .rectangle(0, 0, buttonWidth, buttonHeight, 0x004c99, 1)
-                .setOrigin(1, 0)
+                .setOrigin(0, 0)
                 .setStrokeStyle(2, 0x003366);
+            const preview = this.scene.add.rectangle(12, 20, 24, 24, config.color, 1).setOrigin(0, 0.5);
             const label = this.scene.add
-                .text(-10, 8, `${config.name} (${config.cost})`, {
+                .text(buttonWidth - 10, 8, `${config.name} (${config.cost})`, {
                     fontSize: '14px',
                     color: '#ffffff',
                 })
                 .setOrigin(1, 0);
-            const preview = this.scene.add.rectangle(-buttonWidth + 30, 20, 24, 24, config.color, 1).setOrigin(0.5);
             const description = this.scene.add
-                .text(-buttonWidth + 52, 8, config.description ?? 'No description', {
+                .text(48, 8, config.description ?? 'No description', {
                     fontSize: '11px',
                     color: '#cce6ff',
                     wordWrap: { width: 150 },
@@ -218,7 +354,7 @@ export class UIManager {
             buttonContainer.add([background, preview, label, description]);
 
             buttonContainer.setInteractive(
-                new Phaser.Geom.Rectangle(-buttonWidth, 0, buttonWidth, buttonHeight),
+                new Phaser.Geom.Rectangle(0, 0, buttonWidth, buttonHeight),
                 (shape: Phaser.Geom.Rectangle, x: number, y: number) => Phaser.Geom.Rectangle.Contains(shape, x, y),
             );
 
@@ -232,149 +368,29 @@ export class UIManager {
 
             buttonContainer.on('pointerdown', () => {
                 this.callbacks.onStartPlacement(config);
+                this.toggleBuildMenu();
             });
+
+            container.add(buttonContainer);
         });
     }
 
-    private createMenuButton() {
-        const menuButton = this.scene.add
-            .text(10, 10, 'Main Menu', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#333333',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setDepth(1000)
-            .setInteractive({ useHandCursor: true });
-
-        menuButton.on('pointerover', () => {
-            menuButton.setStyle({ backgroundColor: '#555555' });
-        });
-
-        menuButton.on('pointerout', () => {
-            menuButton.setStyle({ backgroundColor: '#333333' });
-        });
-
-        menuButton.on('pointerdown', () => {
-            this.callbacks.onMainMenu();
-        });
+    private createScenarioMenu() {
+        this.scenarioMenuContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1000).setVisible(false);
+        // Scenario goals will be added here by ScenarioManager
     }
 
-    private createWorkerControls() {
-        this.workerTypeToggle = this.scene.add
-            .text(10, 50, '', {
-                fontSize: '15px',
-                color: '#ffffff',
-                backgroundColor: '#2e8b57',
-                padding: { x: 10, y: 4 },
-            })
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
+    private createResearchMenu() {
+        this.researchMenuContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1000).setVisible(false);
+        // Research options will be added here by ResearchManager
+    }
 
-        this.workerTypeToggle.on('pointerdown', () => {
-            this.callbacks.onCycleWorkerType();
-        });
+    getScenarioMenuContainer(): Phaser.GameObjects.Container | undefined {
+        return this.scenarioMenuContainer;
+    }
 
-        this.spawnWorkerButton = this.scene.add
-            .text(10, 80, '', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#3366cc',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setDepth(1000)
-            .setInteractive({ useHandCursor: true });
-
-        this.spawnWorkerButton.on('pointerover', () => {
-            this.spawnWorkerButton.setStyle({ backgroundColor: '#3355aa' });
-        });
-
-        this.spawnWorkerButton.on('pointerout', () => {
-            this.spawnWorkerButton.setStyle({ backgroundColor: '#3366cc' });
-        });
-
-        this.spawnWorkerButton.on('pointerdown', () => {
-            this.callbacks.onQueueTraining();
-        });
-
-        const idleWorkerButton = this.scene.add
-            .text(10, 120, 'Next Idle Worker (.)', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#228b22',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
-
-        idleWorkerButton.on('pointerover', () => {
-            idleWorkerButton.setStyle({ backgroundColor: '#2fa82f' });
-        });
-
-        idleWorkerButton.on('pointerout', () => {
-            idleWorkerButton.setStyle({ backgroundColor: '#228b22' });
-        });
-
-        idleWorkerButton.on('pointerdown', () => {
-            this.callbacks.onSelectNextIdleWorker();
-        });
-
-        const gatherNearestButton = this.scene.add
-            .text(10, 160, 'Gather Nearest', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#8b8b00',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
-
-        gatherNearestButton.on('pointerover', () => {
-            gatherNearestButton.setStyle({ backgroundColor: '#a3a300' });
-        });
-
-        gatherNearestButton.on('pointerout', () => {
-            gatherNearestButton.setStyle({ backgroundColor: '#8b8b00' });
-        });
-
-        gatherNearestButton.on('pointerdown', () => {
-            this.callbacks.onGatherNearest();
-        });
-
-        this.autoGatherButton = this.scene.add
-            .text(10, 200, '', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#444444',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
-
-        this.autoGatherButton.on('pointerover', () => {
-            const highlightColor = this.autoGatherEnabled ? '#6bbd42' : '#5a5a5a';
-            this.autoGatherButton.setStyle({ backgroundColor: highlightColor });
-        });
-
-        this.autoGatherButton.on('pointerout', () => {
-            this.setAutoGatherEnabled(this.autoGatherEnabled);
-        });
-
-        this.autoGatherButton.on('pointerdown', () => {
-            this.callbacks.onToggleAutoGather();
-        });
-
-        this.trainingStatusText = this.scene.add
-            .text(10, 240, '', {
-                fontSize: '14px',
-                color: '#ffffff',
-                backgroundColor: '#1a1a1a',
-                padding: { x: 10, y: 6 },
-                wordWrap: { width: 280 },
-            })
-            .setScrollFactor(0);
+    getResearchMenuContainer(): Phaser.GameObjects.Container | undefined {
+        return this.researchMenuContainer;
     }
 
     private createPlacementFeedback(width: number) {
@@ -403,31 +419,202 @@ export class UIManager {
             .setVisible(false);
     }
 
-    private createResearchUI(researchOptions: ResearchOption[]) {
-        const { width } = this.scene.cameras.main;
-        const startX = 10;
-        const startY = 170;
-        const rowHeight = 60;
+    showTrainingUI(buildingX: number, buildingY: number, buildingName: string) {
+        if (this.trainingUIContainer) {
+            this.trainingUIContainer.destroy();
+        }
 
-        researchOptions.forEach((option, index) => {
-            const y = startY + index * rowHeight;
-            const button = this.scene.add
-                .text(startX, y, '', {
-                    fontSize: '14px',
-                    color: '#ffffff',
-                    backgroundColor: '#5a3e85',
-                    padding: { x: 8, y: 6 },
-                    wordWrap: { width: width / 3 },
-                })
-                .setScrollFactor(0)
-                .setInteractive({ useHandCursor: true });
+        const worldPos = new Phaser.Math.Vector2(buildingX, buildingY);
+        const camera = this.scene.cameras.main;
+        const screenPos = camera.getWorldPoint(worldPos.x, worldPos.y);
 
-            button.on('pointerdown', () => {
-                this.callbacks.onStartResearch(option.id);
-            });
+        this.trainingUIContainer = this.scene.add.container(screenPos.x + 80, screenPos.y).setDepth(2000);
 
-            this.researchButtons.set(option.id, button);
-            this.updateResearchOption(option);
+        // Background panel
+        const panelWidth = 280;
+        const panelHeight = 240;
+        const panel = this.scene.add
+            .rectangle(0, 0, panelWidth, panelHeight, 0x1a1a1a, 0.95)
+            .setOrigin(0, 0)
+            .setStrokeStyle(2, 0x3366cc);
+
+        // Title
+        const title = this.scene.add
+            .text(10, 10, `Training - ${buildingName}`, {
+                fontSize: '14px',
+                color: '#ffff00',
+                fontStyle: 'bold',
+            })
+            .setOrigin(0, 0);
+
+        // Worker type toggle
+        this.workerTypeToggle = this.scene.add
+            .text(10, 35, '', {
+                fontSize: '14px',
+                color: '#ffffff',
+                backgroundColor: '#2e8b57',
+                padding: { x: 8, y: 4 },
+            })
+            .setOrigin(0, 0)
+            .setInteractive({ useHandCursor: true });
+
+        this.workerTypeToggle.on('pointerdown', () => {
+            this.callbacks.onCycleWorkerType();
         });
+
+        // Train button
+        this.spawnWorkerButton = this.scene.add
+            .text(10, 70, '', {
+                fontSize: '14px',
+                color: '#ffffff',
+                backgroundColor: '#3366cc',
+                padding: { x: 8, y: 4 },
+                wordWrap: { width: panelWidth - 20 },
+            })
+            .setOrigin(0, 0)
+            .setInteractive({ useHandCursor: true });
+
+        this.spawnWorkerButton.on('pointerover', () => {
+            if (this.spawnWorkerButton) {
+                this.spawnWorkerButton.setStyle({ backgroundColor: '#3355aa' });
+            }
+        });
+
+        this.spawnWorkerButton.on('pointerout', () => {
+            if (this.spawnWorkerButton) {
+                this.spawnWorkerButton.setStyle({ backgroundColor: '#3366cc' });
+            }
+        });
+
+        this.spawnWorkerButton.on('pointerdown', () => {
+            this.callbacks.onQueueTraining();
+        });
+
+        // Training status
+        this.trainingStatusText = this.scene.add
+            .text(10, 110, '', {
+                fontSize: '12px',
+                color: '#cccccc',
+                wordWrap: { width: panelWidth - 20 },
+            })
+            .setOrigin(0, 0);
+
+        // Worker controls separator
+        const separator = this.scene.add
+            .rectangle(10, 145, panelWidth - 20, 1, 0x666666)
+            .setOrigin(0, 0);
+
+        const controlsTitle = this.scene.add
+            .text(10, 155, 'Worker Commands', {
+                fontSize: '12px',
+                color: '#aaaaaa',
+            })
+            .setOrigin(0, 0);
+
+        // Idle worker button
+        this.idleWorkerButton = this.scene.add
+            .text(10, 175, 'Next Idle (.)', {
+                fontSize: '13px',
+                color: '#ffffff',
+                backgroundColor: '#228b22',
+                padding: { x: 8, y: 3 },
+            })
+            .setOrigin(0, 0)
+            .setInteractive({ useHandCursor: true });
+
+        this.idleWorkerButton.on('pointerover', () => {
+            if (this.idleWorkerButton) {
+                this.idleWorkerButton.setStyle({ backgroundColor: '#2fa82f' });
+            }
+        });
+
+        this.idleWorkerButton.on('pointerout', () => {
+            if (this.idleWorkerButton) {
+                this.idleWorkerButton.setStyle({ backgroundColor: '#228b22' });
+            }
+        });
+
+        this.idleWorkerButton.on('pointerdown', () => {
+            this.callbacks.onSelectNextIdleWorker();
+        });
+
+        // Gather nearest button
+        this.gatherNearestButton = this.scene.add
+            .text(140, 175, 'Gather Nearest', {
+                fontSize: '13px',
+                color: '#ffffff',
+                backgroundColor: '#8b8b00',
+                padding: { x: 8, y: 3 },
+            })
+            .setOrigin(0, 0)
+            .setInteractive({ useHandCursor: true });
+
+        this.gatherNearestButton.on('pointerover', () => {
+            if (this.gatherNearestButton) {
+                this.gatherNearestButton.setStyle({ backgroundColor: '#a3a300' });
+            }
+        });
+
+        this.gatherNearestButton.on('pointerout', () => {
+            if (this.gatherNearestButton) {
+                this.gatherNearestButton.setStyle({ backgroundColor: '#8b8b00' });
+            }
+        });
+
+        this.gatherNearestButton.on('pointerdown', () => {
+            this.callbacks.onGatherNearest();
+        });
+
+        // Auto-gather toggle
+        this.autoGatherButton = this.scene.add
+            .text(10, 205, '', {
+                fontSize: '13px',
+                color: '#ffffff',
+                backgroundColor: '#444444',
+                padding: { x: 8, y: 3 },
+            })
+            .setOrigin(0, 0)
+            .setInteractive({ useHandCursor: true });
+
+        this.autoGatherButton.on('pointerover', () => {
+            if (this.autoGatherButton) {
+                const highlightColor = this.autoGatherEnabled ? '#6bbd42' : '#5a5a5a';
+                this.autoGatherButton.setStyle({ backgroundColor: highlightColor });
+            }
+        });
+
+        this.autoGatherButton.on('pointerout', () => {
+            this.setAutoGatherEnabled(this.autoGatherEnabled);
+        });
+
+        this.autoGatherButton.on('pointerdown', () => {
+            this.callbacks.onToggleAutoGather();
+        });
+
+        this.trainingUIContainer.add([
+            panel,
+            title,
+            this.workerTypeToggle,
+            this.spawnWorkerButton,
+            this.trainingStatusText,
+            separator,
+            controlsTitle,
+            this.idleWorkerButton,
+            this.gatherNearestButton,
+            this.autoGatherButton,
+        ]);
+    }
+
+    hideTrainingUI() {
+        if (this.trainingUIContainer) {
+            this.trainingUIContainer.destroy();
+            this.trainingUIContainer = undefined;
+            this.workerTypeToggle = undefined;
+            this.spawnWorkerButton = undefined;
+            this.trainingStatusText = undefined;
+            this.idleWorkerButton = undefined;
+            this.gatherNearestButton = undefined;
+            this.autoGatherButton = undefined;
+        }
     }
 }
