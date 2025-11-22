@@ -17,6 +17,12 @@ export interface ScenarioManagerConfig {
 }
 
 export class ScenarioManager {
+    private static readonly PANEL_WIDTH = 280;
+    private static readonly PANEL_Y_POSITION = 140;
+    private static readonly HEADER_HEIGHT = 28;
+    private static readonly GOAL_LINE_HEIGHT = 24;
+    private static readonly PANEL_PADDING = 36;
+
     private readonly scene: Phaser.Scene;
     private readonly goals: ScenarioGoal[];
     private readonly durationMs: number;
@@ -99,12 +105,12 @@ export class ScenarioManager {
     }
 
     private createScenarioPanel() {
-        const panelWidth = 280;
-        const headerHeight = 28;
-        this.scenarioPanel = this.scene.add.container(10, 140).setScrollFactor(0);
+        this.scenarioPanel = this.scene.add
+            .container(10, ScenarioManager.PANEL_Y_POSITION)
+            .setScrollFactor(0);
 
         this.scenarioPanelBackground = this.scene.add
-            .rectangle(0, 0, panelWidth, 200, 0x000000, 0.55)
+            .rectangle(0, 0, ScenarioManager.PANEL_WIDTH, 200, 0x000000, 0.55)
             .setOrigin(0, 0);
 
         const title = this.scene.add.text(10, 6, 'Scenario Goals', {
@@ -116,16 +122,16 @@ export class ScenarioManager {
         this.scenarioPanel.add([this.scenarioPanelBackground, title]);
 
         this.goalTextMap.clear();
-        let offsetY = headerHeight;
+        let offsetY = ScenarioManager.HEADER_HEIGHT;
         this.goals.forEach((goal) => {
             const text = this.scene.add.text(10, offsetY, '', {
                 fontSize: '13px',
                 color: '#ffffff',
-                wordWrap: { width: panelWidth - 20 },
+                wordWrap: { width: ScenarioManager.PANEL_WIDTH - 20 },
             });
             this.goalTextMap.set(goal.id, text);
             this.scenarioPanel?.add(text);
-            offsetY += 24;
+            offsetY += ScenarioManager.GOAL_LINE_HEIGHT;
         });
 
         this.scenarioTimerText = this.scene.add.text(10, offsetY + 4, '', {
@@ -134,11 +140,11 @@ export class ScenarioManager {
         });
         this.scenarioPanel.add(this.scenarioTimerText);
 
-        this.scenarioPanelBackground.height = offsetY + 36;
+        this.scenarioPanelBackground.height = offsetY + ScenarioManager.PANEL_PADDING;
     }
 
     private refreshGoalPanel() {
-        let offsetY = 28;
+        let offsetY = ScenarioManager.HEADER_HEIGHT;
         this.goals.forEach((goal) => {
             const text = this.goalTextMap.get(goal.id);
             if (!text) return;
@@ -147,7 +153,7 @@ export class ScenarioManager {
             text.setText(`${goal.description}: ${progress}${goal.completed ? ' ✓' : ''}`);
             text.setColor(goal.completed ? '#9cff9c' : '#ffffff');
             text.y = offsetY;
-            offsetY += 24;
+            offsetY += ScenarioManager.GOAL_LINE_HEIGHT;
         });
 
         if (this.scenarioTimerText) {
@@ -155,7 +161,7 @@ export class ScenarioManager {
         }
 
         if (this.scenarioPanelBackground) {
-            this.scenarioPanelBackground.height = offsetY + 36;
+            this.scenarioPanelBackground.height = offsetY + ScenarioManager.PANEL_PADDING;
         }
     }
 
