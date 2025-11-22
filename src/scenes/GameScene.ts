@@ -9,8 +9,9 @@ import { ResourceManager, type ResourceManagerConfig, RESOURCE_CONFIGS } from '.
 import { type ResourceType, type WorkerStateType, Worker, WorkerState } from '../units/Worker';
 import { TrainingManager } from '../services/TrainingManager';
 import { type WorkerType } from '../types/WorkerType';
-import { UIManager, type ResearchOption } from '../ui/UIManager';
+import { UIManager } from '../ui/UIManager';
 import { ScenarioManager, type ScenarioGoal } from '../services/ScenarioManager';
+import { ResearchManager, type ResearchOption } from '../services/ResearchManager';
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
@@ -90,6 +91,7 @@ export class GameScene extends Phaser.Scene {
     private autoGatherEnabled: boolean = false;
 
     private scenarioManager!: ScenarioManager;
+    private researchManager!: ResearchManager;
     private readonly scenarioDurationMs = 4 * 60 * 1000;
 
     private carryCapacityBonus: number = 0;
@@ -100,8 +102,6 @@ export class GameScene extends Phaser.Scene {
     private harvestBonusZones: HarvestBonusZone[] = [];
     private passiveIncomeTimers: Phaser.Time.TimerEvent[] = [];
 
-    private researchOptions: ResearchOption[] = [];
-    private completedResearch: Set<string> = new Set();
     private uiManager!: UIManager;
 
     constructor() {
@@ -109,8 +109,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     create() {
-        const { height } = this.scale;
-
         this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
         this.input.mouse?.disableContextMenu();
@@ -123,7 +121,6 @@ export class GameScene extends Phaser.Scene {
 
         this.buildMenuConfigs = this.createBuildMenuConfigs();
         this.workerTypes = this.createWorkerTypes();
-        this.researchOptions = this.createResearchOptions();
         this.trainingManager = this.createTrainingManager();
 
         this.uiManager = new UIManager(this, {
@@ -134,14 +131,26 @@ export class GameScene extends Phaser.Scene {
             onGatherNearest: () => this.commandGatherNearest(),
             onToggleAutoGather: () => this.toggleAutoGather(),
             onCycleWorkerType: () => this.cycleWorkerType(),
-            onStartResearch: (id) => this.startResearch(id),
         });
-        this.uiManager.createHUD(this.buildMenuConfigs, this.researchOptions);
+        this.uiManager.createHUD(this.buildMenuConfigs);
+
+        this.researchManager = new ResearchManager(this, {
+            researchOptions: this.createResearchOptions(),
+            researchMenuContainer: this.uiManager.getResearchMenuContainer(),
+            hasSufficientResource: (type, amount) => this.hasSufficientResource(type, amount),
+            spendResources: (type, amount) => {
+                this.resourceTotals[type] -= amount;
+                this.updateResourceText();
+            },
+            onResearchCompleted: (option) => {
+                option.onComplete();
+                this.showFeedback(`${option.name} completed.`);
+            },
+            showFeedback: (message) => this.showFeedback(message),
+            pulseResourceText: () => this.pulseResourceText(),
+        });
         this.uiManager.updateResourceTotals(this.resourceTotals);
         this.uiManager.updatePopulation(this.currentPopulation, this.populationCap);
-        this.updateWorkerTypeToggle();
-        this.updateTrainingUI();
-        this.updateAutoGatherButtonState();
 
         // Sample base building
         const baseBuilding = new Base(this);
@@ -203,17 +212,6 @@ export class GameScene extends Phaser.Scene {
                 this.cancelPlacement();
             }
         });
-
-        // Instructions
-        this.add
-            .text(10, height - 30, 'Left-click to place | Right-click for workers | Use build button or spawn workers', {
-                fontSize: '14px',
-                color: '#ffffff',
-                backgroundColor: '#000000',
-                padding: { x: 5, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setDepth(1000);
 
         this.cursors = this.input.keyboard!.createCursorKeys();
         this.wasdKeys = this.input.keyboard!.addKeys('W,A,S,D') as Record<
@@ -395,72 +393,7 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
-    private refreshResearchAvailability() {
-        this.researchOptions.forEach((option) => {
-            if (option.status === 'completed' || option.status === 'inProgress') {
-                return;
-            }
 
-            if (!option.requiresBuilding) {
-                option.status = 'available';
-                this.uiManager.updateResearchOption(option);
-                return;
-            }
-
-            const requirementMet = this.placedBuildings.some((building) => building.getConfig().name === option.requiresBuilding);
-            option.status = requirementMet ? 'available' : 'locked';
-            this.uiManager.updateResearchOption(option);
-        });
-    }
-
-    private startResearch(optionId: string) {
-        const option = this.researchOptions.find((candidate) => candidate.id === optionId);
-        if (!option || option.status !== 'available') return;
-
-        if (!this.hasSufficientResource('wood', option.cost)) {
-            this.showFeedback('Not enough wood for that research.');
-            this.pulseResourceText();
-            return;
-        }
-
-        this.resourceTotals.wood -= option.cost;
-        this.updateResourceText();
-
-        option.status = 'inProgress';
-        option.remainingTime = option.duration;
-        this.uiManager.updateResearchOption(option);
-
-        option.timer = this.time.addEvent({
-            delay: 100,
-            loop: true,
-            callback: () => {
-                if (!option.remainingTime) return;
-                option.remainingTime = Math.max(0, option.remainingTime - 100);
-                this.uiManager.updateResearchOption(option);
-                if (option.remainingTime <= 0) {
-                    this.completeResearch(option);
-                }
-            },
-        });
-    }
-
-    private completeResearch(option: ResearchOption) {
-        option.status = 'completed';
-        option.timer?.destroy();
-        option.remainingTime = 0;
-        this.completedResearch.add(option.id);
-        option.onComplete();
-        this.showFeedback(`${option.name} completed.`);
-        this.uiManager.updateResearchOption(option);
-    }
-
-    private updateResearchProgress() {
-        this.researchOptions.forEach((option) => {
-            if (option.status === 'inProgress' && option.remainingTime !== undefined) {
-                this.uiManager.updateResearchOption(option);
-            }
-        });
-    }
 
     private applyCarryCapacityUpgrade(amount: number) {
         this.carryCapacityBonus += amount;
@@ -513,6 +446,7 @@ export class GameScene extends Phaser.Scene {
             durationMs: this.scenarioDurationMs,
             goals,
             onGoalCompleted: (description) => this.showFeedback(`Goal completed: ${description}`),
+            scenarioMenuContainer: this.uiManager.getScenarioMenuContainer(),
         });
     }
 
@@ -582,7 +516,6 @@ export class GameScene extends Phaser.Scene {
         this.selectedWorker?.setSelected(false);
         this.selectedWorker = worker;
         this.selectedWorker.setSelected(true);
-        this.updateTrainingUI();
     }
 
     private clearSelectedWorker() {
@@ -597,6 +530,7 @@ export class GameScene extends Phaser.Scene {
             this.selectedBuilding.setSelected(false);
         }
         this.selectedBuilding = undefined;
+        this.uiManager.hideTrainingUI();
     }
 
     private selectBuilding(building: Building) {
@@ -608,7 +542,16 @@ export class GameScene extends Phaser.Scene {
         this.selectedBuilding?.setSelected(false);
         this.selectedBuilding = building;
         this.selectedBuilding.setSelected(true);
-        this.updateTrainingUI();
+
+        if (this.canTrainWorkers(building)) {
+            const position = building.getPosition() ?? this.basePosition;
+            this.uiManager.showTrainingUI(position.x, position.y, building.getConfig().name);
+            this.updateWorkerTypeToggle();
+            this.updateAutoGatherButtonState();
+            this.updateTrainingUI();
+        } else {
+            this.uiManager.hideTrainingUI();
+        }
     }
 
     private configureBuilding(building: Building) {
@@ -750,7 +693,7 @@ export class GameScene extends Phaser.Scene {
         this.updateTrainingUI();
         this.updateConstructionSites(delta);
         this.scenarioManager.tick();
-        this.updateResearchProgress();
+        this.researchManager.updateResearchProgress();
     }
 
     shutdown() {
@@ -1301,7 +1244,8 @@ export class GameScene extends Phaser.Scene {
             });
         }
 
-        this.refreshResearchAvailability();
+        const buildingNames = this.placedBuildings.map((building) => building.getConfig().name);
+        this.researchManager.refreshAvailability(buildingNames);
     }
 
     private pulseResourceText() {
