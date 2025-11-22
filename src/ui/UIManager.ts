@@ -424,11 +424,14 @@ export class UIManager {
             this.trainingUIContainer.destroy();
         }
 
-        const worldPos = new Phaser.Math.Vector2(buildingX, buildingY);
         const camera = this.scene.cameras.main;
-        const screenPos = camera.getWorldPoint(worldPos.x, worldPos.y);
+        const screenX = buildingX - camera.scrollX;
+        const screenY = buildingY - camera.scrollY;
 
-        this.trainingUIContainer = this.scene.add.container(screenPos.x + 80, screenPos.y).setDepth(2000);
+        this.trainingUIContainer = this.scene.add
+            .container(screenX + 80, screenY)
+            .setDepth(2000)
+            .setScrollFactor(0);
 
         // Background panel
         const panelWidth = 280;
