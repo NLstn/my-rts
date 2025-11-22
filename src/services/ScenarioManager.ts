@@ -18,11 +18,6 @@ export interface ScenarioManagerConfig {
 }
 
 export class ScenarioManager {
-    private static readonly PANEL_WIDTH = 280;
-    private static readonly PANEL_Y_POSITION = 140;
-    private static readonly HEADER_HEIGHT = 28;
-    private static readonly GOAL_LINE_HEIGHT = 24;
-    private static readonly PANEL_PADDING = 36;
 
     private readonly scene: Phaser.Scene;
     private readonly goals: ScenarioGoal[];
