@@ -118,7 +118,7 @@ export class UIManager {
     setAutoGatherEnabled(enabled: boolean) {
         this.autoGatherEnabled = enabled;
         this.autoGatherButton.setText(`Auto Gather: ${enabled ? 'On' : 'Off'}`);
-        this.autoGatherButton.setStyle({ backgroundColor: enabled ? '#4b8f28' : '#444444' });
+        this.autoGatherButton.setStyle({ backgroundColor: enabled ? '#5f9e3c' : '#444444' });
     }
 
     setPlacementInfo(text: string | undefined) {
@@ -176,9 +176,6 @@ export class UIManager {
         button.disableInteractive();
     }
 
-    updateResearchAvailability(researchOptions: ResearchOption[]) {
-        researchOptions.forEach((option) => this.updateResearchOption(option));
-    }
 
     pulseResourceText() {
         this.scene.tweens.add({
