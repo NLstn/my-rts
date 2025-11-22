@@ -10,7 +10,7 @@ import { type ResourceType, type WorkerStateType, Worker, WorkerState } from '..
 import { TrainingManager } from '../services/TrainingManager';
 import { type WorkerType } from '../types/WorkerType';
 import { UIManager } from '../ui/UIManager';
-import { ScenarioManager, type ScenarioGoal } from '../services/ScenarioManager';
+
 import { ResearchManager, type ResearchOption } from '../services/ResearchManager';
 
 const WORLD_WIDTH = 2000;
@@ -90,9 +90,7 @@ export class GameScene extends Phaser.Scene {
     private readonly workerProductionTimeMs = 2000;
     private autoGatherEnabled: boolean = false;
 
-    private scenarioManager!: ScenarioManager;
     private researchManager!: ResearchManager;
-    private readonly scenarioDurationMs = 4 * 60 * 1000;
 
     private carryCapacityBonus: number = 0;
     private buildSpeedBonusMultiplier: number = 1;
@@ -186,7 +184,6 @@ export class GameScene extends Phaser.Scene {
         this.resourceManager.initialize();
 
         this.generateStartingResources();
-        this.initializeScenarioManager();
 
         this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
             this.updatePlacementPreview(pointer);
@@ -410,45 +407,7 @@ export class GameScene extends Phaser.Scene {
         });
     }
 
-    private initializeScenarioManager() {
-        const goals: ScenarioGoal[] = [
-            {
-                id: 'resources',
-                description: 'Reach 200 wood',
-                current: this.resourceTotals.wood,
-                target: 200,
-                completed: this.resourceTotals.wood >= 200,
-            },
-            {
-                id: 'houses',
-                description: 'Build 2 Houses',
-                current: 0,
-                target: 2,
-                completed: false,
-            },
-            {
-                id: 'storehouses',
-                description: 'Build 1 Storehouse',
-                current: 0,
-                target: 1,
-                completed: false,
-            },
-            {
-                id: 'workers',
-                description: 'Train 4 Workers',
-                current: this.workers.length,
-                target: 4,
-                completed: this.workers.length >= 4,
-            },
-        ];
 
-        this.scenarioManager = new ScenarioManager(this, {
-            durationMs: this.scenarioDurationMs,
-            goals,
-            onGoalCompleted: (description) => this.showFeedback(`Goal completed: ${description}`),
-            scenarioMenuContainer: this.uiManager.getScenarioMenuContainer(),
-        });
-    }
 
     private queueWorkerTraining() {
         if (!this.selectedBuilding || !this.canTrainWorkers(this.selectedBuilding)) {
@@ -508,7 +467,6 @@ export class GameScene extends Phaser.Scene {
         this.trackWorker(worker);
         worker.setAutoGatherEnabled(this.autoGatherEnabled);
         this.selectWorker(worker);
-        this.scenarioManager.updateGoal('workers', this.workers.length);
     }
 
     private selectWorker(worker: Worker) {
@@ -671,7 +629,6 @@ export class GameScene extends Phaser.Scene {
         this.resourceTotals[type] += amount;
         this.updateResourceText();
         this.showFeedback(`+${amount} ${RESOURCE_CONFIGS[type].label}`);
-        this.scenarioManager.updateGoal('resources', this.resourceTotals.wood);
     }
 
     private getHarvestMultiplier(position: Phaser.Math.Vector2) {
@@ -692,7 +649,6 @@ export class GameScene extends Phaser.Scene {
         this.workers.forEach((worker) => worker.update());
         this.updateTrainingUI();
         this.updateConstructionSites(delta);
-        this.scenarioManager.tick();
         this.researchManager.updateResearchProgress();
     }
 
@@ -1167,19 +1123,7 @@ export class GameScene extends Phaser.Scene {
         site.assignedWorker?.releaseFromConstruction();
         this.applyBuildingEffects(site.config, site.position);
 
-        if (site.config.name === 'House') {
-            this.scenarioManager.updateGoal('houses', this.countBuildingsByName('House'));
-        }
-
-        if (site.config.name === 'Storehouse') {
-            this.scenarioManager.updateGoal('storehouses', this.countBuildingsByName('Storehouse'));
-        }
-
         this.showFeedback(`${site.config.name} completed.`);
-    }
-
-    private countBuildingsByName(name: string) {
-        return this.placedBuildings.filter((building) => building.getConfig().name === name).length;
     }
 
     private createBuildingFromConfig(config: BuildingConfig): Building {

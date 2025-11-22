@@ -29,10 +29,8 @@ export class UIManager {
     private feedbackText?: Phaser.GameObjects.Text;
     private autoGatherEnabled: boolean = false;
     private buildMenuContainer?: Phaser.GameObjects.Container;
-    private scenarioMenuContainer?: Phaser.GameObjects.Container;
     private researchMenuContainer?: Phaser.GameObjects.Container;
     private buildMenuVisible: boolean = false;
-    private scenarioMenuVisible: boolean = false;
     private researchMenuVisible: boolean = false;
     private trainingUIContainer?: Phaser.GameObjects.Container;
 
@@ -232,30 +230,6 @@ export class UIManager {
             this.toggleBuildMenu();
         });
 
-        // Scenario menu button
-        const scenarioMenuButton = this.scene.add
-            .text(180, 10, 'Scenario', {
-                fontSize: '16px',
-                color: '#ffffff',
-                backgroundColor: '#228b22',
-                padding: { x: 10, y: 5 },
-            })
-            .setScrollFactor(0)
-            .setDepth(1000)
-            .setInteractive({ useHandCursor: true });
-
-        scenarioMenuButton.on('pointerover', () => {
-            scenarioMenuButton.setStyle({ backgroundColor: '#2fa82f' });
-        });
-
-        scenarioMenuButton.on('pointerout', () => {
-            scenarioMenuButton.setStyle({ backgroundColor: this.scenarioMenuVisible ? '#2fa82f' : '#228b22' });
-        });
-
-        scenarioMenuButton.on('pointerdown', () => {
-            this.toggleScenarioMenu();
-        });
-
         // Research menu button
         const researchMenuButton = this.scene.add
             .text(280, 10, 'Research', {
@@ -281,7 +255,6 @@ export class UIManager {
         });
 
         this.createBuildMenu(buildMenuConfigs);
-        this.createScenarioMenu();
         this.createResearchMenu();
     }
 
@@ -291,18 +264,6 @@ export class UIManager {
             this.buildMenuContainer.setVisible(this.buildMenuVisible);
         }
         if (this.buildMenuVisible) {
-            if (this.scenarioMenuVisible) this.toggleScenarioMenu();
-            if (this.researchMenuVisible) this.toggleResearchMenu();
-        }
-    }
-
-    private toggleScenarioMenu() {
-        this.scenarioMenuVisible = !this.scenarioMenuVisible;
-        if (this.scenarioMenuContainer) {
-            this.scenarioMenuContainer.setVisible(this.scenarioMenuVisible);
-        }
-        if (this.scenarioMenuVisible) {
-            if (this.buildMenuVisible) this.toggleBuildMenu();
             if (this.researchMenuVisible) this.toggleResearchMenu();
         }
     }
@@ -314,7 +275,6 @@ export class UIManager {
         }
         if (this.researchMenuVisible) {
             if (this.buildMenuVisible) this.toggleBuildMenu();
-            if (this.scenarioMenuVisible) this.toggleScenarioMenu();
         }
     }
 
@@ -375,18 +335,9 @@ export class UIManager {
         });
     }
 
-    private createScenarioMenu() {
-        this.scenarioMenuContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1000).setVisible(false);
-        // Scenario goals will be added here by ScenarioManager
-    }
-
     private createResearchMenu() {
         this.researchMenuContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(1000).setVisible(false);
         // Research options will be added here by ResearchManager
-    }
-
-    getScenarioMenuContainer(): Phaser.GameObjects.Container | undefined {
-        return this.scenarioMenuContainer;
     }
 
     getResearchMenuContainer(): Phaser.GameObjects.Container | undefined {
