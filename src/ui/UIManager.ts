@@ -232,7 +232,7 @@ export class UIManager {
 
         // Research menu button
         const researchMenuButton = this.scene.add
-            .text(280, 10, 'Research', {
+            .text(180, 10, 'Research', {
                 fontSize: '16px',
                 color: '#ffffff',
                 backgroundColor: '#5a3e85',
