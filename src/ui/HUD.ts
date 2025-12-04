@@ -11,6 +11,12 @@ export class HUD {
   private _onPauseCallback?: () => void;
   private _onResumeCallback?: () => void;
   private _onMainMenuCallback?: () => void;
+  
+  // Bottom HUD components
+  private _bottomHUD: HTMLElement;
+  private _selectedEntityPanel: HTMLElement;
+  private _actionMenu: HTMLElement;
+  private _minimap: HTMLElement;
 
   constructor() {
     this._container = this._createContainer();
@@ -18,8 +24,15 @@ export class HUD {
     this._pauseMenu = this._createPauseMenu();
     this._continueButton = this._createContinueButton();
     this._mainMenuButton = this._createMainMenuButton();
+    
+    // Create bottom HUD components
+    this._bottomHUD = this._createBottomHUD();
+    this._selectedEntityPanel = this._createSelectedEntityPanel();
+    this._actionMenu = this._createActionMenu();
+    this._minimap = this._createMinimap();
 
     this._setupPauseMenu();
+    this._setupBottomHUD();
     this._setupEventListeners();
     
     document.body.appendChild(this._container);
@@ -73,12 +86,94 @@ export class HUD {
     return button;
   }
 
+  private _createBottomHUD(): HTMLElement {
+    const bottomHUD = document.createElement('div');
+    bottomHUD.className = 'bottom-hud';
+    return bottomHUD;
+  }
+
+  private _createSelectedEntityPanel(): HTMLElement {
+    const panel = document.createElement('div');
+    panel.className = 'selected-entity-panel';
+    
+    const placeholder = document.createElement('div');
+    placeholder.className = 'entity-placeholder';
+    placeholder.textContent = 'Selected Entity';
+    
+    const entityIcon = document.createElement('div');
+    entityIcon.className = 'entity-icon';
+    entityIcon.textContent = '🏛️';
+    
+    const entityInfo = document.createElement('div');
+    entityInfo.className = 'entity-info';
+    
+    const entityName = document.createElement('div');
+    entityName.className = 'entity-name';
+    entityName.textContent = 'Building Name';
+    
+    const entityStats = document.createElement('div');
+    entityStats.className = 'entity-stats';
+    entityStats.textContent = 'HP: 100/100';
+    
+    entityInfo.appendChild(entityName);
+    entityInfo.appendChild(entityStats);
+    
+    panel.appendChild(entityIcon);
+    panel.appendChild(entityInfo);
+    
+    return panel;
+  }
+
+  private _createActionMenu(): HTMLElement {
+    const menu = document.createElement('div');
+    menu.className = 'action-menu';
+    
+    const placeholder = document.createElement('div');
+    placeholder.className = 'action-placeholder';
+    placeholder.textContent = 'Action Menu';
+    
+    // Create placeholder action buttons
+    for (let i = 0; i < 6; i++) {
+      const actionButton = document.createElement('button');
+      actionButton.className = 'action-button';
+      actionButton.textContent = `A${i + 1}`;
+      menu.appendChild(actionButton);
+    }
+    
+    return menu;
+  }
+
+  private _createMinimap(): HTMLElement {
+    const minimap = document.createElement('div');
+    minimap.className = 'minimap';
+    
+    const minimapCanvas = document.createElement('canvas');
+    minimapCanvas.className = 'minimap-canvas';
+    minimapCanvas.width = 200;
+    minimapCanvas.height = 200;
+    
+    const placeholder = document.createElement('div');
+    placeholder.className = 'minimap-placeholder';
+    placeholder.textContent = 'Minimap';
+    
+    minimap.appendChild(minimapCanvas);
+    minimap.appendChild(placeholder);
+    
+    return minimap;
+  }
+
   private _setupPauseMenu(): void {
     const menuContent = this._pauseMenu.querySelector('.pause-menu-content');
     if (menuContent) {
       menuContent.appendChild(this._continueButton);
       menuContent.appendChild(this._mainMenuButton);
     }
+  }
+
+  private _setupBottomHUD(): void {
+    this._bottomHUD.appendChild(this._selectedEntityPanel);
+    this._bottomHUD.appendChild(this._actionMenu);
+    this._bottomHUD.appendChild(this._minimap);
   }
 
   private _setupEventListeners(): void {
@@ -146,6 +241,7 @@ export class HUD {
     this._container.style.display = 'block';
     this._container.appendChild(this._menuButton);
     this._container.appendChild(this._pauseMenu);
+    this._container.appendChild(this._bottomHUD);
   }
 
   /**
