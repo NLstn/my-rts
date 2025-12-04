@@ -209,7 +209,7 @@ canvas {
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 0.5rem;
   backdrop-filter: blur(10px);
-  min-width: 200px;
+  min-width: 280px;
   height: 200px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
 }
@@ -259,8 +259,8 @@ canvas {
 }
 
 .action-button {
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   background: rgba(255, 255, 255, 0.1);
   border: 2px solid rgba(255, 255, 255, 0.2);
   border-radius: 0.25rem;
@@ -289,7 +289,7 @@ canvas {
 /* Minimap */
 .minimap {
   position: relative;
-  width: 200px;
+  width: 220px;
   height: 200px;
   background: rgba(0, 0, 0, 0.8);
   border: 2px solid rgba(255, 255, 255, 0.3);

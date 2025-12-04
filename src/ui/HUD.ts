@@ -96,24 +96,17 @@ export class HUD {
     const panel = document.createElement('div');
     panel.className = 'selected-entity-panel';
     
-    const placeholder = document.createElement('div');
-    placeholder.className = 'entity-placeholder';
-    placeholder.textContent = 'Selected Entity';
-    
     const entityIcon = document.createElement('div');
     entityIcon.className = 'entity-icon';
-    entityIcon.textContent = '🏛️';
     
     const entityInfo = document.createElement('div');
     entityInfo.className = 'entity-info';
     
     const entityName = document.createElement('div');
     entityName.className = 'entity-name';
-    entityName.textContent = 'Building Name';
     
     const entityStats = document.createElement('div');
     entityStats.className = 'entity-stats';
-    entityStats.textContent = 'HP: 100/100';
     
     entityInfo.appendChild(entityName);
     entityInfo.appendChild(entityStats);
@@ -256,6 +249,27 @@ export class HUD {
    */
   public get isMenuOpen(): boolean {
     return this._isMenuOpen;
+  }
+
+  /**
+   * Update the selected entity panel with entity information
+   */
+  public updateSelectedEntity(entityData: { name: string; icon: string; health: number; maxHealth: number } | null): void {
+    const icon = this._selectedEntityPanel.querySelector('.entity-icon');
+    const name = this._selectedEntityPanel.querySelector('.entity-name');
+    const stats = this._selectedEntityPanel.querySelector('.entity-stats');
+    
+    if (!entityData) {
+      // Clear the panel but keep it visible
+      if (icon) icon.textContent = '';
+      if (name) name.textContent = '';
+      if (stats) stats.textContent = '';
+      return;
+    }
+    
+    if (icon) icon.textContent = entityData.icon;
+    if (name) name.textContent = entityData.name;
+    if (stats) stats.textContent = `HP: ${Math.round(entityData.health)}/${entityData.maxHealth}`;
   }
 
   /**

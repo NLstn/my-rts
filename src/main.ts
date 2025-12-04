@@ -11,6 +11,10 @@ class Game {
   private _isPaused = false;
   private _lastTime = 0;
   private _base!: Base;
+  private _raycaster: THREE.Raycaster;
+  private _mouse: THREE.Vector2;
+  private _selectedEntity: Base | null = null;
+  private _hoveredEntity: Base | null = null;
 
   constructor() {
     this._scene = new THREE.Scene();
@@ -22,6 +26,8 @@ class Game {
     );
     this._renderer = new THREE.WebGLRenderer({ antialias: true });
     this._hud = new HUD();
+    this._raycaster = new THREE.Raycaster();
+    this._mouse = new THREE.Vector2();
     
     this._setupRenderer();
     this._setupCamera();
@@ -71,6 +77,8 @@ class Game {
 
   private _setupEventListeners(): void {
     window.addEventListener('resize', this._onWindowResize.bind(this));
+    this._renderer.domElement.addEventListener('click', this._onCanvasClick.bind(this));
+    this._renderer.domElement.addEventListener('mousemove', this._onCanvasMouseMove.bind(this));
   }
 
   private _setupHUD(): void {
@@ -111,6 +119,109 @@ class Game {
     this._renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
+  private _onCanvasMouseMove(event: MouseEvent): void {
+    // Don't process hover if menu is open
+    if (this._hud.isMenuOpen) return;
+
+    // Calculate mouse position in normalized device coordinates (-1 to +1)
+    const rect = this._renderer.domElement.getBoundingClientRect();
+    this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // Update the raycaster with camera and mouse position
+    this._raycaster.setFromCamera(this._mouse, this._camera);
+
+    // Check for intersections with the base building
+    const baseMesh = this._base.getMesh();
+    const intersects = this._raycaster.intersectObjects(baseMesh.children, true);
+
+    const newHoveredEntity = intersects.length > 0 ? this._base : null;
+
+    // Update hover state if changed
+    if (newHoveredEntity !== this._hoveredEntity) {
+      // Remove old hover outline
+      if (this._hoveredEntity && this._hoveredEntity !== this._selectedEntity) {
+        this._hoveredEntity.hideOutline();
+      }
+
+      this._hoveredEntity = newHoveredEntity;
+
+      // Add new hover outline (only if not selected)
+      if (this._hoveredEntity && this._hoveredEntity !== this._selectedEntity) {
+        this._hoveredEntity.showOutline(0x00ffff, 3); // Cyan, bigger outline
+      }
+    }
+  }
+
+  private _onCanvasClick(event: MouseEvent): void {
+    // Don't process clicks if menu is open
+    if (this._hud.isMenuOpen) return;
+
+    // Calculate mouse position in normalized device coordinates (-1 to +1)
+    const rect = this._renderer.domElement.getBoundingClientRect();
+    this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // Update the raycaster with camera and mouse position
+    this._raycaster.setFromCamera(this._mouse, this._camera);
+
+    // Check for intersections with the base building
+    const baseMesh = this._base.getMesh();
+    const intersects = this._raycaster.intersectObjects(baseMesh.children, true);
+
+    if (intersects.length > 0) {
+      // Base was clicked - select it
+      this._selectEntity(this._base);
+    } else {
+      // Clicked on empty space - deselect
+      this._deselectEntity();
+    }
+  }
+
+  private _selectEntity(entity: Base): void {
+    // Remove old selection outline
+    if (this._selectedEntity) {
+      this._selectedEntity.hideOutline();
+    }
+
+    this._selectedEntity = entity;
+    
+    // Add selection outline (smaller, different color)
+    if (this._selectedEntity) {
+      this._selectedEntity.showOutline(0xffff00, 2); // Yellow, smaller outline
+    }
+    
+    this._updateHUDSelection();
+  }
+
+  private _deselectEntity(): void {
+    // Remove selection outline
+    if (this._selectedEntity) {
+      this._selectedEntity.hideOutline();
+      
+      // Restore hover outline if still hovering
+      if (this._selectedEntity === this._hoveredEntity) {
+        this._selectedEntity.showOutline(0x00ffff, 3);
+      }
+    }
+
+    this._selectedEntity = null;
+    this._updateHUDSelection();
+  }
+
+  private _updateHUDSelection(): void {
+    if (this._selectedEntity) {
+      this._hud.updateSelectedEntity({
+        name: 'Base',
+        icon: '🏛️',
+        health: this._selectedEntity.getHealth(),
+        maxHealth: this._selectedEntity.getMaxHealth(),
+      });
+    } else {
+      this._hud.updateSelectedEntity(null);
+    }
+  }
+
   public start(): void {
     if (this._isRunning) return;
     
@@ -143,6 +254,11 @@ class Game {
     
     // Update buildings
     this._base.update(deltaTime);
+    
+    // Update HUD if an entity is selected
+    if (this._selectedEntity) {
+      this._updateHUDSelection();
+    }
   }
 
   private _render(): void {
@@ -155,6 +271,8 @@ class Game {
     this._base.dispose();
     this._renderer.dispose();
     window.removeEventListener('resize', this._onWindowResize.bind(this));
+    this._renderer.domElement.removeEventListener('click', this._onCanvasClick.bind(this));
+    this._renderer.domElement.removeEventListener('mousemove', this._onCanvasMouseMove.bind(this));
   }
 }
 

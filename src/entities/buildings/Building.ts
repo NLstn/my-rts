@@ -87,7 +87,46 @@ export abstract class Building {
     return this._buildProgress;
   }
 
+  public showOutline(color: number, linewidth: number = 2): void {
+    this.hideOutline();
+
+    // Create outline around actual model geometry
+    this._mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const edgesGeometry = new THREE.EdgesGeometry(child.geometry, 15); // 15 degree threshold
+        const edgesMaterial = new THREE.LineBasicMaterial({ 
+          color, 
+          linewidth,
+          transparent: true,
+          opacity: 0.9,
+        });
+        const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+        edges.userData.isOutline = true;
+        child.add(edges);
+      }
+    });
+  }
+
+  public hideOutline(): void {
+    // Remove all outline edges from mesh children
+    this._mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const outlines = child.children.filter(c => c.userData.isOutline);
+        outlines.forEach(outline => {
+          child.remove(outline);
+          if (outline instanceof THREE.LineSegments) {
+            outline.geometry.dispose();
+            (outline.material as THREE.Material).dispose();
+          }
+        });
+      }
+    });
+  }
+
   public dispose(): void {
+    // Clean up outline
+    this.hideOutline();
+    
     // Clean up Three.js objects
     this._mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
