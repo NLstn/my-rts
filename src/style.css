@@ -254,6 +254,7 @@ canvas {
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 0.5rem;
   backdrop-filter: blur(10px);
+  width: 500px;
   height: 200px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
 }

@@ -121,18 +121,6 @@ export class HUD {
     const menu = document.createElement('div');
     menu.className = 'action-menu';
     
-    const placeholder = document.createElement('div');
-    placeholder.className = 'action-placeholder';
-    placeholder.textContent = 'Action Menu';
-    
-    // Create placeholder action buttons
-    for (let i = 0; i < 6; i++) {
-      const actionButton = document.createElement('button');
-      actionButton.className = 'action-button';
-      actionButton.textContent = `A${i + 1}`;
-      menu.appendChild(actionButton);
-    }
-    
     return menu;
   }
 
