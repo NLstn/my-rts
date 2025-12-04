@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { HUD } from './ui/HUD';
+import { Base } from './entities/buildings/Base';
 
 class Game {
   private _scene: THREE.Scene;
@@ -9,6 +10,7 @@ class Game {
   private _isRunning = false;
   private _isPaused = false;
   private _lastTime = 0;
+  private _base!: Base;
 
   constructor() {
     this._scene = new THREE.Scene();
@@ -59,14 +61,12 @@ class Game {
     });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
     this._scene.add(ground);
 
-    // Add a test cube
-    const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
-    const cubeMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
-    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-    cube.position.set(0, 1, 0);
-    this._scene.add(cube);
+    // Add the player's base building
+    this._base = new Base(new THREE.Vector3(0, 0, 0));
+    this._scene.add(this._base.getMesh());
   }
 
   private _setupEventListeners(): void {
@@ -135,13 +135,14 @@ class Game {
     requestAnimationFrame(this._gameLoop.bind(this));
   }
 
-  private _update(_deltaTime: number): void {
+  private _update(deltaTime: number): void {
     // Skip updates if game is paused
     if (this._isPaused) {
       return;
     }
     
-    // Game logic updates will go here
+    // Update buildings
+    this._base.update(deltaTime);
   }
 
   private _render(): void {
@@ -151,6 +152,7 @@ class Game {
   public dispose(): void {
     this._isRunning = false;
     this._hud.dispose();
+    this._base.dispose();
     this._renderer.dispose();
     window.removeEventListener('resize', this._onWindowResize.bind(this));
   }
