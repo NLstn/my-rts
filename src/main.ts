@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import { HUD } from './ui/HUD';
 
 class Game {
   private _scene: THREE.Scene;
   private _camera: THREE.PerspectiveCamera;
   private _renderer: THREE.WebGLRenderer;
+  private _hud: HUD;
   private _isRunning = false;
+  private _isPaused = false;
   private _lastTime = 0;
 
   constructor() {
@@ -16,11 +19,13 @@ class Game {
       1000
     );
     this._renderer = new THREE.WebGLRenderer({ antialias: true });
+    this._hud = new HUD();
     
     this._setupRenderer();
     this._setupCamera();
     this._setupScene();
     this._setupEventListeners();
+    this._setupHUD();
   }
 
   private _setupRenderer(): void {
@@ -68,6 +73,38 @@ class Game {
     window.addEventListener('resize', this._onWindowResize.bind(this));
   }
 
+  private _setupHUD(): void {
+    this._hud.onPause(() => this._pauseGame());
+    this._hud.onResume(() => this._resumeGame());
+    this._hud.onMainMenu(() => this._returnToMainMenu());
+    this._hud.show();
+  }
+
+  private _pauseGame(): void {
+    this._isPaused = true;
+  }
+
+  private _resumeGame(): void {
+    this._isPaused = false;
+  }
+
+  private _returnToMainMenu(): void {
+    this.stop();
+    this.dispose();
+    
+    // Show main menu
+    const menu = document.getElementById('menu');
+    const gameContainer = document.getElementById('game-container');
+    
+    if (menu) {
+      menu.style.display = 'flex';
+    }
+    
+    if (gameContainer) {
+      gameContainer.style.display = 'none';
+    }
+  }
+
   private _onWindowResize(): void {
     this._camera.aspect = window.innerWidth / window.innerHeight;
     this._camera.updateProjectionMatrix();
@@ -99,6 +136,11 @@ class Game {
   }
 
   private _update(_deltaTime: number): void {
+    // Skip updates if game is paused
+    if (this._isPaused) {
+      return;
+    }
+    
     // Game logic updates will go here
   }
 
@@ -108,6 +150,7 @@ class Game {
 
   public dispose(): void {
     this._isRunning = false;
+    this._hud.dispose();
     this._renderer.dispose();
     window.removeEventListener('resize', this._onWindowResize.bind(this));
   }

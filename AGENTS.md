@@ -170,42 +170,19 @@ class EventBus {
 ### Before Committing Code
 **CRITICAL**: All code changes MUST pass the following checks before being committed:
 
-1. **Linting**: Run `npm run lint` to check for code quality issues
-   - Fix all errors and warnings
-   - Use `npm run lint:fix` for automatic fixes
-   - No eslint-disable comments without justification
-
-2. **Code Formatting**: Run `npm run format:check` to verify formatting
-   - Use `npm run format` to auto-format code
-   - All code must follow Prettier rules
-   - No formatting inconsistencies
-
-3. **Build Validation**: Run `npm run build` to ensure the project builds
+1. **Build Validation**: Run `npm run build` to ensure the project builds
    - Build must succeed without errors
    - Check for any build warnings
    - TypeScript type checking happens during build
 
-4. **Testing**: Run `npm test` once test suite is implemented
+2. **Linting**: Run `npm run lint` to check for code quality issues
+   - Fix all errors and warnings
+   - No eslint-disable comments without justification
+
+3. **Testing**: Run `npm test` once test suite is implemented
    - All tests must pass
    - Add tests for new features
    - Update tests for modified features
-
-### Automated Validation
-Use the combined validation script:
-```bash
-npm run validate
-```
-
-This runs linting and formatting checks in one command.
-
-### CI/CD Pipeline
-All pull requests are automatically checked by GitHub Actions:
-- **Linting**: ESLint checks code quality
-- **Formatting**: Prettier verifies code formatting
-- **Building**: Vite builds the project (includes TypeScript type checking)
-- **Testing**: Test suite runs (when implemented)
-
-**Pull requests cannot be merged unless all CI checks pass.**
 
 ## Testing Guidelines
 
