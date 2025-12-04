@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Building, BuildingConfig } from './Building';
+import { Worker, WORKER_CONFIG } from '../units/Worker';
 
 const BASE_CONFIG: BuildingConfig = {
   name: 'Base',
@@ -18,11 +19,24 @@ const BASE_CONFIG: BuildingConfig = {
   },
 };
 
+interface TrainingQueueItem {
+  type: 'worker';
+  progress: number;
+  totalTime: number;
+}
+
 export class Base extends Building {
+  private _trainingQueue: TrainingQueueItem[] = [];
+  private _rallyPoint: THREE.Vector3;
+  private _spawnedWorkers: Set<THREE.Vector3> = new Set();
+  private _workerReadyToSpawn = false;
+
   constructor(position: THREE.Vector3) {
     super(BASE_CONFIG, position);
     this._isConstructed = true; // Base starts fully constructed
     this._buildProgress = 1;
+    this._rallyPoint = position.clone();
+    this._rallyPoint.x += 8; // Default rally point to the right
   }
 
   protected _createModel(): void {
@@ -130,5 +144,138 @@ export class Base extends Building {
       const time = Date.now() * 0.001;
       flag.rotation.y = Math.sin(time * 2) * 0.1;
     }
+
+    // Update training queue
+    if (this._trainingQueue.length > 0 && !this._workerReadyToSpawn) {
+      const currentTraining = this._trainingQueue[0];
+      currentTraining.progress += deltaTime;
+
+      // Check if training is complete
+      if (currentTraining.progress >= currentTraining.totalTime) {
+        this._workerReadyToSpawn = true;
+      }
+    }
+  }
+
+  /**
+   * Queue a worker for training
+   */
+  public trainWorker(): void {
+    this._trainingQueue.push({
+      type: 'worker',
+      progress: 0,
+      totalTime: WORKER_CONFIG.trainTime,
+    });
+  }
+
+  /**
+   * Get the current training queue
+   */
+  public getTrainingQueue(): TrainingQueueItem[] {
+    return this._trainingQueue;
+  }
+
+  /**
+   * Check if a worker is ready to spawn
+   */
+  public hasWorkerReady(): boolean {
+    return this._workerReadyToSpawn;
+  }
+
+  /**
+   * Spawn a worker at the base
+   * Returns the spawned worker instance
+   */
+  public spawnWorker(): Worker {
+    // Remove the completed training from queue
+    if (this._trainingQueue.length > 0) {
+      this._trainingQueue.shift();
+    }
+    
+    // Reset the flag
+    this._workerReadyToSpawn = false;
+    
+    const spawnPos = this._calculateSpawnPosition();
+    const worker = new Worker(spawnPos);
+    
+    // Move worker to rally point
+    worker.moveTo(this._rallyPoint);
+    
+    return worker;
+  }
+
+  /**
+   * Calculate a spawn position next to the base that doesn't overlap
+   */
+  private _calculateSpawnPosition(): THREE.Vector3 {
+    const { width, depth } = this._config.dimensions;
+    const spawnDistance = Math.max(width, depth) / 2 + 1;
+    
+    // Try different angles around the base to find a free spot
+    const angles = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4, Math.PI, (5 * Math.PI) / 4, (3 * Math.PI) / 2, (7 * Math.PI) / 4];
+    
+    for (const angle of angles) {
+      const testPos = new THREE.Vector3(
+        this._position.x + Math.cos(angle) * spawnDistance,
+        this._position.y,
+        this._position.z + Math.sin(angle) * spawnDistance
+      );
+      
+      // Check if this position is already occupied
+      let occupied = false;
+      for (const spawnedPos of this._spawnedWorkers) {
+        if (testPos.distanceTo(spawnedPos) < 1.5) {
+          occupied = true;
+          break;
+        }
+      }
+      
+      if (!occupied) {
+        this._spawnedWorkers.add(testPos);
+        // Clean up old spawn positions after a delay
+        setTimeout(() => {
+          this._spawnedWorkers.delete(testPos);
+        }, 2000);
+        return testPos;
+      }
+    }
+    
+    // If all positions are occupied, use a random offset
+    const randomAngle = Math.random() * Math.PI * 2;
+    return new THREE.Vector3(
+      this._position.x + Math.cos(randomAngle) * spawnDistance,
+      this._position.y,
+      this._position.z + Math.sin(randomAngle) * spawnDistance
+    );
+  }
+
+  /**
+   * Set the rally point where units will move after spawning
+   */
+  public setRallyPoint(position: THREE.Vector3): void {
+    this._rallyPoint = position.clone();
+  }
+
+  /**
+   * Get the rally point
+   */
+  public getRallyPoint(): THREE.Vector3 {
+    return this._rallyPoint.clone();
+  }
+
+  /**
+   * Get the training progress percentage (0-1) for the current item
+   */
+  public getTrainingProgress(): number {
+    if (this._trainingQueue.length === 0) return 0;
+    const current = this._trainingQueue[0];
+    return Math.min(1, current.progress / current.totalTime);
+  }
+
+  /**
+   * Get the queue length
+   */
+  public getQueueLength(): number {
+    return this._trainingQueue.length;
   }
 }

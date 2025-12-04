@@ -261,6 +261,76 @@ export class HUD {
   }
 
   /**
+   * Update the action menu with buttons
+   */
+  public updateActionMenu(actions: Array<{ label: string; icon: string; callback: () => void; enabled?: boolean }> | null): void {
+    // Clear existing actions
+    this._actionMenu.innerHTML = '';
+    
+    if (!actions || actions.length === 0) {
+      return;
+    }
+    
+    // Create action buttons
+    actions.forEach(action => {
+      const button = document.createElement('button');
+      button.className = 'action-button';
+      if (action.enabled === false) {
+        button.disabled = true;
+        button.className += ' action-button-disabled';
+      }
+      
+      const icon = document.createElement('div');
+      icon.className = 'action-icon';
+      icon.textContent = action.icon;
+      
+      const label = document.createElement('div');
+      label.className = 'action-label';
+      label.textContent = action.label;
+      
+      button.appendChild(icon);
+      button.appendChild(label);
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        action.callback();
+      });
+      
+      this._actionMenu.appendChild(button);
+    });
+  }
+
+  /**
+   * Update training queue display
+   */
+  public updateTrainingQueue(queueData: { count: number; progress: number } | null): void {
+    // Find or create queue display element
+    let queueDisplay = this._selectedEntityPanel.querySelector('.training-queue');
+    
+    if (!queueData || queueData.count === 0) {
+      // Remove queue display if no queue
+      if (queueDisplay) {
+        queueDisplay.remove();
+      }
+      return;
+    }
+    
+    if (!queueDisplay) {
+      queueDisplay = document.createElement('div');
+      queueDisplay.className = 'training-queue';
+      this._selectedEntityPanel.appendChild(queueDisplay);
+    }
+    
+    // Update queue display
+    const progressPercent = Math.round(queueData.progress * 100);
+    queueDisplay.innerHTML = `
+      <div class="queue-info">Training: ${queueData.count} in queue</div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: ${progressPercent}%"></div>
+      </div>
+    `;
+  }
+
+  /**
    * Clean up HUD elements
    */
   public dispose(): void {

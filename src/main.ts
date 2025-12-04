@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { HUD } from './ui/HUD';
 import { Base } from './entities/buildings/Base';
+import { Worker } from './entities/units/Worker';
+
+type GameEntity = Base | Worker;
 
 class Game {
   private _scene: THREE.Scene;
@@ -11,10 +14,11 @@ class Game {
   private _isPaused = false;
   private _lastTime = 0;
   private _base!: Base;
+  private _workers: Worker[] = [];
   private _raycaster: THREE.Raycaster;
   private _mouse: THREE.Vector2;
-  private _selectedEntity: Base | null = null;
-  private _hoveredEntity: Base | null = null;
+  private _selectedEntity: GameEntity | null = null;
+  private _hoveredEntity: GameEntity | null = null;
 
   constructor() {
     this._scene = new THREE.Scene();
@@ -131,11 +135,27 @@ class Game {
     // Update the raycaster with camera and mouse position
     this._raycaster.setFromCamera(this._mouse, this._camera);
 
-    // Check for intersections with the base building
-    const baseMesh = this._base.getMesh();
-    const intersects = this._raycaster.intersectObjects(baseMesh.children, true);
+    // Check for intersections with all entities
+    let newHoveredEntity: GameEntity | null = null;
 
-    const newHoveredEntity = intersects.length > 0 ? this._base : null;
+    // Check base
+    const baseMesh = this._base.getMesh();
+    const baseIntersects = this._raycaster.intersectObjects(baseMesh.children, true);
+    if (baseIntersects.length > 0) {
+      newHoveredEntity = this._base;
+    }
+
+    // Check workers if no base intersection
+    if (!newHoveredEntity) {
+      for (const worker of this._workers) {
+        const workerMesh = worker.getMesh();
+        const workerIntersects = this._raycaster.intersectObjects(workerMesh.children, true);
+        if (workerIntersects.length > 0) {
+          newHoveredEntity = worker;
+          break;
+        }
+      }
+    }
 
     // Update hover state if changed
     if (newHoveredEntity !== this._hoveredEntity) {
@@ -165,20 +185,38 @@ class Game {
     // Update the raycaster with camera and mouse position
     this._raycaster.setFromCamera(this._mouse, this._camera);
 
-    // Check for intersections with the base building
-    const baseMesh = this._base.getMesh();
-    const intersects = this._raycaster.intersectObjects(baseMesh.children, true);
+    // Check for intersections with all entities
+    let clickedEntity: GameEntity | null = null;
 
-    if (intersects.length > 0) {
-      // Base was clicked - select it
-      this._selectEntity(this._base);
+    // Check base
+    const baseMesh = this._base.getMesh();
+    const baseIntersects = this._raycaster.intersectObjects(baseMesh.children, true);
+    if (baseIntersects.length > 0) {
+      clickedEntity = this._base;
+    }
+
+    // Check workers if no base intersection
+    if (!clickedEntity) {
+      for (const worker of this._workers) {
+        const workerMesh = worker.getMesh();
+        const workerIntersects = this._raycaster.intersectObjects(workerMesh.children, true);
+        if (workerIntersects.length > 0) {
+          clickedEntity = worker;
+          break;
+        }
+      }
+    }
+
+    if (clickedEntity) {
+      // Entity was clicked - select it
+      this._selectEntity(clickedEntity);
     } else {
       // Clicked on empty space - deselect
       this._deselectEntity();
     }
   }
 
-  private _selectEntity(entity: Base): void {
+  private _selectEntity(entity: GameEntity): void {
     // Remove old selection outline
     if (this._selectedEntity) {
       this._selectedEntity.hideOutline();
@@ -211,14 +249,102 @@ class Game {
 
   private _updateHUDSelection(): void {
     if (this._selectedEntity) {
+      // Determine entity name and icon
+      let name = 'Unknown';
+      let icon = '❓';
+      
+      if (this._selectedEntity instanceof Base) {
+        name = 'Base';
+        icon = '🏛️';
+      } else if (this._selectedEntity instanceof Worker) {
+        name = 'Worker';
+        icon = '👷';
+      }
+
       this._hud.updateSelectedEntity({
-        name: 'Base',
-        icon: '🏛️',
+        name,
+        icon,
         health: this._selectedEntity.getHealth(),
         maxHealth: this._selectedEntity.getMaxHealth(),
       });
+
+      // Update action menu based on entity type (only on selection change)
+      this._updateActionMenu();
+
+      // Update training queue if base is selected
+      if (this._selectedEntity instanceof Base) {
+        const queueLength = this._selectedEntity.getQueueLength();
+        const progress = this._selectedEntity.getTrainingProgress();
+        this._hud.updateTrainingQueue(
+          queueLength > 0 ? { count: queueLength, progress } : null
+        );
+      } else {
+        this._hud.updateTrainingQueue(null);
+      }
     } else {
       this._hud.updateSelectedEntity(null);
+      this._hud.updateActionMenu(null);
+      this._hud.updateTrainingQueue(null);
+    }
+  }
+
+  private _updateHUDStats(): void {
+    if (!this._selectedEntity) return;
+
+    // Only update stats, not the action menu
+    let name = 'Unknown';
+    let icon = '❓';
+    
+    if (this._selectedEntity instanceof Base) {
+      name = 'Base';
+      icon = '🏛️';
+    } else if (this._selectedEntity instanceof Worker) {
+      name = 'Worker';
+      icon = '👷';
+    }
+
+    this._hud.updateSelectedEntity({
+      name,
+      icon,
+      health: this._selectedEntity.getHealth(),
+      maxHealth: this._selectedEntity.getMaxHealth(),
+    });
+
+    // Update training queue if base is selected
+    if (this._selectedEntity instanceof Base) {
+      const queueLength = this._selectedEntity.getQueueLength();
+      const progress = this._selectedEntity.getTrainingProgress();
+      this._hud.updateTrainingQueue(
+        queueLength > 0 ? { count: queueLength, progress } : null
+      );
+    }
+  }
+
+  private _updateActionMenu(): void {
+    if (!this._selectedEntity) {
+      this._hud.updateActionMenu(null);
+      return;
+    }
+
+    const actions = [];
+
+    if (this._selectedEntity instanceof Base) {
+      // Base actions
+      actions.push({
+        label: 'Train Worker',
+        icon: '👷',
+        callback: () => this._trainWorker(),
+        enabled: true,
+      });
+    }
+
+    this._hud.updateActionMenu(actions);
+  }
+
+  private _trainWorker(): void {
+    if (this._selectedEntity instanceof Base) {
+      this._selectedEntity.trainWorker();
+      this._updateHUDStats(); // Update UI stats immediately
     }
   }
 
@@ -254,10 +380,35 @@ class Game {
     
     // Update buildings
     this._base.update(deltaTime);
+
+    // Check if a worker is ready to spawn
+    if (this._base.hasWorkerReady()) {
+      const worker = this._base.spawnWorker();
+      this._workers.push(worker);
+      this._scene.add(worker.getMesh());
+    }
     
-    // Update HUD if an entity is selected
+    // Update workers
+    for (let i = this._workers.length - 1; i >= 0; i--) {
+      const worker = this._workers[i];
+      worker.update(deltaTime);
+      
+      // Remove dead workers
+      if (worker.isDead()) {
+        this._scene.remove(worker.getMesh());
+        worker.dispose();
+        this._workers.splice(i, 1);
+        
+        // Deselect if the dead worker was selected
+        if (this._selectedEntity === worker) {
+          this._deselectEntity();
+        }
+      }
+    }
+    
+    // Update HUD stats if an entity is selected (not the action menu)
     if (this._selectedEntity) {
-      this._updateHUDSelection();
+      this._updateHUDStats();
     }
   }
 
@@ -269,6 +420,13 @@ class Game {
     this._isRunning = false;
     this._hud.dispose();
     this._base.dispose();
+    
+    // Dispose all workers
+    for (const worker of this._workers) {
+      worker.dispose();
+    }
+    this._workers = [];
+    
     this._renderer.dispose();
     window.removeEventListener('resize', this._onWindowResize.bind(this));
     this._renderer.domElement.removeEventListener('click', this._onCanvasClick.bind(this));

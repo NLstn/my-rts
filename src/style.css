@@ -202,7 +202,7 @@ canvas {
 /* Selected Entity Panel */
 .selected-entity-panel {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
   padding: 1rem;
   background: rgba(0, 0, 0, 0.8);
@@ -219,6 +219,7 @@ canvas {
   line-height: 1;
   width: 64px;
   height: 64px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -230,6 +231,7 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  flex: 1;
 }
 
 .entity-name {
@@ -260,31 +262,77 @@ canvas {
 }
 
 .action-button {
-  width: 72px;
-  height: 72px;
+  width: 100%;
+  height: 100%;
   background: rgba(255, 255, 255, 0.1);
   border: 2px solid rgba(255, 255, 255, 0.2);
   border-radius: 0.25rem;
   color: #ffffff;
-  font-size: 1rem;
-  font-weight: bold;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.25rem;
 }
 
-.action-button:hover {
+.action-button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.4);
   transform: translateY(-2px);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
 }
 
-.action-button:active {
+.action-button:active:not(:disabled) {
   transform: translateY(0);
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+
+.action-button:disabled,
+.action-button-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.action-label {
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Training Queue */
+.training-queue {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  width: 100%;
+}
+
+.queue-info {
+  color: #ffffff;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transition: width 0.3s ease;
 }
 
 /* Minimap */
