@@ -1,20 +1,26 @@
 import * as THREE from 'three';
 import { HUD } from './ui/HUD';
+import { ResourceHUD } from './ui/ResourceHUD';
 import { Base } from './entities/buildings/Base';
 import { Worker } from './entities/units/Worker';
+import { Tree } from './entities/resources/Tree';
+import { ResourceManager } from './core/ResourceManager';
 
-type GameEntity = Base | Worker;
+type GameEntity = Base | Worker | Tree;
 
 class Game {
   private _scene: THREE.Scene;
   private _camera: THREE.PerspectiveCamera;
   private _renderer: THREE.WebGLRenderer;
   private _hud: HUD;
+  private _resourceHUD: ResourceHUD;
+  private _resourceManager: ResourceManager;
   private _isRunning = false;
   private _isPaused = false;
   private _lastTime = 0;
   private _base!: Base;
   private _workers: Worker[] = [];
+  private _trees: Tree[] = [];
   private _raycaster: THREE.Raycaster;
   private _mouse: THREE.Vector2;
   private _selectedEntity: GameEntity | null = null;
@@ -30,6 +36,8 @@ class Game {
     );
     this._renderer = new THREE.WebGLRenderer({ antialias: true });
     this._hud = new HUD();
+    this._resourceHUD = new ResourceHUD();
+    this._resourceManager = new ResourceManager();
     this._raycaster = new THREE.Raycaster();
     this._mouse = new THREE.Vector2();
     
@@ -38,6 +46,7 @@ class Game {
     this._setupScene();
     this._setupEventListeners();
     this._setupHUD();
+    this._setupResourceManager();
   }
 
   private _setupRenderer(): void {
@@ -82,6 +91,8 @@ class Game {
   private _setupEventListeners(): void {
     window.addEventListener('resize', this._onWindowResize.bind(this));
     this._renderer.domElement.addEventListener('click', this._onCanvasClick.bind(this));
+    this._renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault()); // Disable context menu
+    this._renderer.domElement.addEventListener('mousedown', this._onCanvasClick.bind(this));
     this._renderer.domElement.addEventListener('mousemove', this._onCanvasMouseMove.bind(this));
   }
 
@@ -90,6 +101,50 @@ class Game {
     this._hud.onResume(() => this._resumeGame());
     this._hud.onMainMenu(() => this._returnToMainMenu());
     this._hud.show();
+  }
+
+  private _setupResourceManager(): void {
+    // Update resource HUD when resources change
+    this._resourceManager.onChange((resources) => {
+      this._resourceHUD.updateResources(resources);
+    });
+
+    // Initial update
+    this._resourceHUD.updateResources(this._resourceManager.getResources());
+    this._resourceHUD.show();
+
+    // Spawn trees in groups around the map
+    this._spawnTrees();
+  }
+
+  private _spawnTrees(): void {
+    // Spawn 5 groups of trees
+    const treeGroups = [
+      { center: new THREE.Vector3(-15, 0, -15), count: 8 },
+      { center: new THREE.Vector3(15, 0, -15), count: 6 },
+      { center: new THREE.Vector3(-15, 0, 15), count: 7 },
+      { center: new THREE.Vector3(15, 0, 15), count: 9 },
+      { center: new THREE.Vector3(-20, 0, 0), count: 5 },
+    ];
+
+    treeGroups.forEach((group) => {
+      for (let i = 0; i < group.count; i++) {
+        // Random position around the group center
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * 3 + 1; // 1-4 units from center
+        const position = new THREE.Vector3(
+          group.center.x + Math.cos(angle) * distance,
+          0,
+          group.center.z + Math.sin(angle) * distance
+        );
+
+        // Random size variation
+        const size = 0.8 + Math.random() * 0.4; // 0.8-1.2 scale
+        const tree = new Tree(position, size);
+        this._trees.push(tree);
+        this._scene.add(tree.getMesh());
+      }
+    });
   }
 
   private _pauseGame(): void {
@@ -157,6 +212,18 @@ class Game {
       }
     }
 
+    // Check trees if no other intersection
+    if (!newHoveredEntity) {
+      for (const tree of this._trees) {
+        const treeMesh = tree.getMesh();
+        const treeIntersects = this._raycaster.intersectObjects(treeMesh.children, true);
+        if (treeIntersects.length > 0) {
+          newHoveredEntity = tree;
+          break;
+        }
+      }
+    }
+
     // Update hover state if changed
     if (newHoveredEntity !== this._hoveredEntity) {
       // Remove old hover outline
@@ -176,6 +243,13 @@ class Game {
   private _onCanvasClick(event: MouseEvent): void {
     // Don't process clicks if menu is open
     if (this._hud.isMenuOpen) return;
+
+    // Right-click for commands
+    if (event.button === 2) {
+      event.preventDefault();
+      this._handleRightClick(event);
+      return;
+    }
 
     // Calculate mouse position in normalized device coordinates (-1 to +1)
     const rect = this._renderer.domElement.getBoundingClientRect();
@@ -207,6 +281,18 @@ class Game {
       }
     }
 
+    // Check trees if no other intersection
+    if (!clickedEntity) {
+      for (const tree of this._trees) {
+        const treeMesh = tree.getMesh();
+        const treeIntersects = this._raycaster.intersectObjects(treeMesh.children, true);
+        if (treeIntersects.length > 0) {
+          clickedEntity = tree;
+          break;
+        }
+      }
+    }
+
     if (clickedEntity) {
       // Entity was clicked - select it
       this._selectEntity(clickedEntity);
@@ -214,6 +300,63 @@ class Game {
       // Clicked on empty space - deselect
       this._deselectEntity();
     }
+  }
+
+  private _handleRightClick(event: MouseEvent): void {
+    if (!this._selectedEntity || !(this._selectedEntity instanceof Worker)) {
+      return; // Only workers can be commanded with right-click
+    }
+
+    // Calculate mouse position
+    const rect = this._renderer.domElement.getBoundingClientRect();
+    this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // Update raycaster
+    this._raycaster.setFromCamera(this._mouse, this._camera);
+
+    // Check if clicking on a tree
+    for (const tree of this._trees) {
+      const treeMesh = tree.getMesh();
+      const treeIntersects = this._raycaster.intersectObjects(treeMesh.children, true);
+      if (treeIntersects.length > 0 && !tree.isDepleted()) {
+        // Command worker to harvest this tree
+        this._selectedEntity.harvestResource(tree, this._base);
+        return;
+      }
+    }
+
+    // If not clicking on a tree, just move to location
+    const groundIntersects = this._raycaster.intersectObjects(this._scene.children, true);
+    if (groundIntersects.length > 0) {
+      const targetPosition = groundIntersects[0].point;
+      this._selectedEntity.moveTo(targetPosition);
+    }
+  }
+
+  /**
+   * Find a nearby tree for a worker when their current resource is depleted
+   */
+  private _findNearbyTree(worker: Worker): Tree | null {
+    const workerPos = worker.getPosition();
+    const assignedResource = worker.getAssignedResource();
+    const searchPos = assignedResource ? assignedResource.getPosition() : workerPos;
+    
+    let closestTree: Tree | null = null;
+    let closestDistance = Infinity;
+    const MAX_SEARCH_DISTANCE = 15; // Only search within 15 units
+
+    for (const tree of this._trees) {
+      if (tree.isDepleted()) continue;
+      
+      const distance = searchPos.distanceTo(tree.getPosition());
+      if (distance < closestDistance && distance <= MAX_SEARCH_DISTANCE) {
+        closestDistance = distance;
+        closestTree = tree;
+      }
+    }
+
+    return closestTree;
   }
 
   private _selectEntity(entity: GameEntity): void {
@@ -252,20 +395,31 @@ class Game {
       // Determine entity name and icon
       let name = 'Unknown';
       let icon = '❓';
+      let health = 0;
+      let maxHealth = 0;
       
       if (this._selectedEntity instanceof Base) {
         name = 'Base';
         icon = '🏛️';
+        health = this._selectedEntity.getHealth();
+        maxHealth = this._selectedEntity.getMaxHealth();
       } else if (this._selectedEntity instanceof Worker) {
         name = 'Worker';
         icon = '👷';
+        health = this._selectedEntity.getHealth();
+        maxHealth = this._selectedEntity.getMaxHealth();
+      } else if (this._selectedEntity instanceof Tree) {
+        name = 'Tree';
+        icon = '🌲';
+        health = this._selectedEntity.getWoodAmount();
+        maxHealth = health; // Trees don't have separate max, just show wood amount
       }
 
       this._hud.updateSelectedEntity({
         name,
         icon,
-        health: this._selectedEntity.getHealth(),
-        maxHealth: this._selectedEntity.getMaxHealth(),
+        health,
+        maxHealth,
       });
 
       // Update action menu based on entity type (only on selection change)
@@ -294,20 +448,31 @@ class Game {
     // Only update stats, not the action menu
     let name = 'Unknown';
     let icon = '❓';
+    let health = 0;
+    let maxHealth = 0;
     
     if (this._selectedEntity instanceof Base) {
       name = 'Base';
       icon = '🏛️';
+      health = this._selectedEntity.getHealth();
+      maxHealth = this._selectedEntity.getMaxHealth();
     } else if (this._selectedEntity instanceof Worker) {
       name = 'Worker';
       icon = '👷';
+      health = this._selectedEntity.getHealth();
+      maxHealth = this._selectedEntity.getMaxHealth();
+    } else if (this._selectedEntity instanceof Tree) {
+      name = 'Tree';
+      icon = '🌲';
+      health = this._selectedEntity.getWoodAmount();
+      maxHealth = health;
     }
 
     this._hud.updateSelectedEntity({
       name,
       icon,
-      health: this._selectedEntity.getHealth(),
-      maxHealth: this._selectedEntity.getMaxHealth(),
+      health,
+      maxHealth,
     });
 
     // Update training queue if base is selected
@@ -384,6 +549,10 @@ class Game {
     // Check if a worker is ready to spawn
     if (this._base.hasWorkerReady()) {
       const worker = this._base.spawnWorker();
+      
+      // Set up tree finder callback for this worker
+      worker.setTreeFinder(() => this._findNearbyTree(worker));
+      
       this._workers.push(worker);
       this._scene.add(worker.getMesh());
     }
@@ -393,6 +562,20 @@ class Game {
       const worker = this._workers[i];
       worker.update(deltaTime);
       
+      // Check if worker is ready to deliver resources
+      if (worker.isReadyToDeliver()) {
+        const resources = worker.collectCarriedResources();
+        if (resources.wood > 0) {
+          this._resourceManager.addResource('wood', resources.wood);
+        }
+        if (resources.food > 0) {
+          this._resourceManager.addResource('food', resources.food);
+        }
+        if (resources.stone > 0) {
+          this._resourceManager.addResource('stone', resources.stone);
+        }
+      }
+      
       // Remove dead workers
       if (worker.isDead()) {
         this._scene.remove(worker.getMesh());
@@ -401,6 +584,22 @@ class Game {
         
         // Deselect if the dead worker was selected
         if (this._selectedEntity === worker) {
+          this._deselectEntity();
+        }
+      }
+    }
+    
+    // Update trees - remove depleted ones with fade effect
+    for (let i = this._trees.length - 1; i >= 0; i--) {
+      const tree = this._trees[i];
+      if (tree.isDepleted()) {
+        // Remove from scene and dispose
+        this._scene.remove(tree.getMesh());
+        tree.dispose();
+        this._trees.splice(i, 1);
+        
+        // Deselect if the depleted tree was selected
+        if (this._selectedEntity === tree) {
           this._deselectEntity();
         }
       }
@@ -419,6 +618,7 @@ class Game {
   public dispose(): void {
     this._isRunning = false;
     this._hud.dispose();
+    this._resourceHUD.dispose();
     this._base.dispose();
     
     // Dispose all workers
@@ -427,9 +627,16 @@ class Game {
     }
     this._workers = [];
     
+    // Dispose all trees
+    for (const tree of this._trees) {
+      tree.dispose();
+    }
+    this._trees = [];
+    
     this._renderer.dispose();
     window.removeEventListener('resize', this._onWindowResize.bind(this));
     this._renderer.domElement.removeEventListener('click', this._onCanvasClick.bind(this));
+    this._renderer.domElement.removeEventListener('mousedown', this._onCanvasClick.bind(this));
     this._renderer.domElement.removeEventListener('mousemove', this._onCanvasMouseMove.bind(this));
   }
 }

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { Unit, UnitConfig } from './Unit';
+import type { Tree } from '../resources/Tree';
+import type { Base } from '../buildings/Base';
 
 const WORKER_CONFIG: UnitConfig = {
   name: 'Worker',
@@ -16,9 +18,43 @@ const WORKER_CONFIG: UnitConfig = {
   },
 };
 
+const MAX_CARRY_CAPACITY = 10; // Maximum resources per type
+const HARVEST_RATE = 5; // Resources per second
+const HARVEST_RANGE = 2; // Distance at which worker can harvest
+const BASE_DELIVERY_RANGE = 4; // Distance from base to stop and deliver
+
+enum WorkerState {
+  IDLE,
+  MOVING_TO_RESOURCE,
+  HARVESTING,
+  RETURNING_TO_BASE,
+  DELIVERING,
+}
+
+interface CarriedResources {
+  wood: number;
+  food: number;
+  stone: number;
+}
+
 export class Worker extends Unit {
+  private _state: WorkerState;
+  private _targetResource: Tree | null;
+  private _assignedResource: Tree | null; // The resource the worker is assigned to
+  private _homeBase: Base | null;
+  private _carriedResources: CarriedResources;
+  private _harvestTimer: number;
+  private _nearbyTreesFinder: (() => Tree | null) | null; // Callback to find nearby trees
+
   constructor(position: THREE.Vector3) {
     super(WORKER_CONFIG, position);
+    this._state = WorkerState.IDLE;
+    this._targetResource = null;
+    this._assignedResource = null;
+    this._homeBase = null;
+    this._carriedResources = { wood: 0, food: 0, stone: 0 };
+    this._harvestTimer = 0;
+    this._nearbyTreesFinder = null;
   }
 
   protected _createModel(): void {
@@ -125,6 +161,129 @@ export class Worker extends Unit {
   public update(deltaTime: number): void {
     super.update(deltaTime);
     
+    // Update harvesting state machine
+    switch (this._state) {
+      case WorkerState.MOVING_TO_RESOURCE:
+        if (!this._isMoving && this._targetResource) {
+          // Reached resource, start harvesting
+          const distance = this._position.distanceTo(this._targetResource.getPosition());
+          if (distance <= HARVEST_RANGE) {
+            this._state = WorkerState.HARVESTING;
+            this._targetResource.setBeingHarvested(true);
+          }
+        }
+        break;
+
+      case WorkerState.HARVESTING:
+        if (this._targetResource) {
+          // Check if resource is depleted
+          if (this._targetResource.isDepleted()) {
+            this._targetResource.setBeingHarvested(false);
+            
+            // Try to find a nearby tree
+            const nearbyTree = this._nearbyTreesFinder ? this._nearbyTreesFinder() : null;
+            if (nearbyTree) {
+              // Found a nearby tree, go harvest it
+              this._targetResource = nearbyTree;
+              this._assignedResource = nearbyTree;
+              this._state = WorkerState.MOVING_TO_RESOURCE;
+              
+              // Calculate position near the tree
+              const treePos = nearbyTree.getPosition();
+              const direction = new THREE.Vector3()
+                .subVectors(this._position, treePos)
+                .normalize();
+              if (direction.length() === 0) direction.set(1, 0, 0);
+              const targetPos = treePos.clone().add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
+              this.moveTo(targetPos);
+            } else if (this._carriedResources.wood > 0 && this._homeBase) {
+              // No nearby tree, return to base if carrying resources
+              this._state = WorkerState.RETURNING_TO_BASE;
+              this._moveToBaseDeliveryPoint();
+            } else {
+              // Nothing to do
+              this._state = WorkerState.IDLE;
+              this._targetResource = null;
+              this._assignedResource = null;
+            }
+            break;
+          }
+
+          this._harvestTimer += deltaTime;
+          
+          // Harvest at the specified rate
+          if (this._harvestTimer >= 1.0) {
+            const harvestAmount = Math.floor(this._harvestTimer * HARVEST_RATE);
+            this._harvestTimer = 0;
+            
+            const harvested = this._targetResource.harvest(harvestAmount);
+            this._carriedResources.wood += harvested;
+            
+            // Check if inventory is full
+            if (this._carriedResources.wood >= MAX_CARRY_CAPACITY) {
+              this._targetResource.setBeingHarvested(false);
+              if (this._homeBase) {
+                this._state = WorkerState.RETURNING_TO_BASE;
+                this._moveToBaseDeliveryPoint();
+              } else {
+                this._state = WorkerState.IDLE;
+              }
+            }
+          }
+        }
+        break;
+
+      case WorkerState.RETURNING_TO_BASE:
+        if (!this._isMoving && this._homeBase) {
+          // Check if we're close enough to the base
+          const distanceToBase = this._position.distanceTo(this._homeBase.getPosition());
+          if (distanceToBase <= BASE_DELIVERY_RANGE) {
+            // Close enough, start delivering
+            this._state = WorkerState.DELIVERING;
+          }
+        }
+        break;
+
+      case WorkerState.DELIVERING:
+        // Delivery happens in main game loop, then worker returns to resource
+        if (this._assignedResource && !this._assignedResource.isDepleted()) {
+          // Return to assigned resource
+          this._targetResource = this._assignedResource;
+          this._state = WorkerState.MOVING_TO_RESOURCE;
+          
+          // Calculate position near the resource
+          const resourcePos = this._assignedResource.getPosition();
+          const direction = new THREE.Vector3()
+            .subVectors(this._position, resourcePos)
+            .normalize();
+          if (direction.length() === 0) direction.set(1, 0, 0);
+          const targetPos = resourcePos.clone().add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
+          this.moveTo(targetPos);
+        } else {
+          // Resource is depleted, try to find another
+          const nearbyTree = this._nearbyTreesFinder ? this._nearbyTreesFinder() : null;
+          if (nearbyTree) {
+            this._targetResource = nearbyTree;
+            this._assignedResource = nearbyTree;
+            this._state = WorkerState.MOVING_TO_RESOURCE;
+            
+            // Calculate position near the tree
+            const treePos = nearbyTree.getPosition();
+            const direction = new THREE.Vector3()
+              .subVectors(this._position, treePos)
+              .normalize();
+            if (direction.length() === 0) direction.set(1, 0, 0);
+            const targetPos = treePos.clone().add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
+            this.moveTo(targetPos);
+          } else {
+            this._state = WorkerState.IDLE;
+            this._targetResource = null;
+            this._assignedResource = null;
+          }
+        }
+        break;
+    }
+    
     // Add simple walking animation when moving
     if (this._isMoving) {
       const time = Date.now() * 0.005;
@@ -162,6 +321,112 @@ export class Worker extends Unit {
         rightArm.rotation.x = 0;
       }
     }
+  }
+
+  /**
+   * Command worker to harvest a resource
+   */
+  public harvestResource(resource: Tree, homeBase: Base): void {
+    this._targetResource = resource;
+    this._assignedResource = resource;
+    this._homeBase = homeBase;
+    this._state = WorkerState.MOVING_TO_RESOURCE;
+    
+    // Calculate a position near the resource instead of at its center
+    const resourcePos = resource.getPosition();
+    const direction = new THREE.Vector3()
+      .subVectors(this._position, resourcePos)
+      .normalize();
+    
+    // If worker is already at the resource position, pick a default direction
+    if (direction.length() === 0) {
+      direction.set(1, 0, 0);
+    }
+    
+    // Move to a position just outside harvest range
+    const targetPos = resourcePos.clone().add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
+    this.moveTo(targetPos);
+  }
+
+  /**
+   * Set a callback function to find nearby trees when current resource is depleted
+   */
+  public setTreeFinder(finder: () => Tree | null): void {
+    this._nearbyTreesFinder = finder;
+  }
+
+  /**
+   * Move to a position near the base for delivery
+   */
+  private _moveToBaseDeliveryPoint(): void {
+    if (!this._homeBase) return;
+
+    const basePos = this._homeBase.getPosition();
+    const direction = new THREE.Vector3()
+      .subVectors(this._position, basePos)
+      .normalize();
+    
+    // Calculate delivery point just outside the base
+    const deliveryPoint = basePos.clone().add(direction.multiplyScalar(BASE_DELIVERY_RANGE));
+    this.moveTo(deliveryPoint);
+  }
+
+  /**
+   * Check if worker is ready to deliver resources
+   */
+  public isReadyToDeliver(): boolean {
+    return this._state === WorkerState.DELIVERING;
+  }
+
+  /**
+   * Get carried resources and reset inventory
+   */
+  public collectCarriedResources(): CarriedResources {
+    const resources = { ...this._carriedResources };
+    this._carriedResources = { wood: 0, food: 0, stone: 0 };
+    return resources;
+  }
+
+  /**
+   * Get current carried resource amount
+   */
+  public getCarriedResources(): CarriedResources {
+    return { ...this._carriedResources };
+  }
+
+  /**
+   * Get worker state
+   */
+  public getState(): WorkerState {
+    return this._state;
+  }
+
+  /**
+   * Check if worker is idle
+   */
+  public isIdle(): boolean {
+    return this._state === WorkerState.IDLE;
+  }
+
+  /**
+   * Stop current task
+   */
+  public stopTask(): void {
+    if (this._targetResource) {
+      this._targetResource.setBeingHarvested(false);
+      this._targetResource = null;
+    }
+    this._assignedResource = null;
+    this._state = WorkerState.IDLE;
+    this._targetPosition = null;
+    this._isMoving = false;
+  }
+
+  /**
+   * Get the assigned resource node
+   */
+  public getAssignedResource(): Tree | null {
+    return this._assignedResource;
   }
 }
 
