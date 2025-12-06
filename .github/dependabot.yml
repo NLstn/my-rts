@@ -12,21 +12,12 @@ updates:
       - "dependabot"
     labels:
       - "dependencies"
-      - "automated"
-    # Group all development dependencies into a single PR
+    # Group all dependencies into a single PR
     groups:
-      dev-dependencies:
+      all-dependencies:
         patterns:
-          - "@types/*"
-          - "@typescript-eslint/*"
-          - "eslint*"
-          - "prettier"
-          - "typescript"
-          - "vite"
-        update-types:
-          - "minor"
-          - "patch"
-    # Separate major updates for review
+          - "*"
+    # Version strategy for npm updates
     versioning-strategy: increase
 
   # Enable version updates for GitHub Actions
@@ -40,4 +31,7 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
-      - "automated"
+    groups:
+      all-github-actions:
+        patterns:
+          - "*"
