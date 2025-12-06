@@ -12,7 +12,7 @@
     "test": "echo \"Error: no test runner configured yet\" && exit 1"
   },
   "dependencies": {
-    "three": "^0.160.0"
+    "three": "^0.181.2"
   },
   "devDependencies": {
     "@types/three": "^0.160.0",
