@@ -8,12 +8,12 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ['src/**/*.ts'],
+    files: ['**/*.ts'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
       },
       globals: {
         console: 'readonly',
