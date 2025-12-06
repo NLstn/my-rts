@@ -2,7 +2,13 @@
  * Resource type definitions for the game
  */
 
-export type ResourceType = 'wood' | 'food' | 'stone' | 'gold' | 'iron' | 'tools';
+export type ResourceType =
+  | 'wood'
+  | 'food'
+  | 'stone'
+  | 'gold'
+  | 'iron'
+  | 'tools';
 
 export const BASIC_RESOURCES: ResourceType[] = ['wood', 'food', 'stone'];
 export const ADVANCED_RESOURCES: ResourceType[] = ['gold', 'iron', 'tools'];

@@ -38,7 +38,7 @@ export abstract class Unit {
     this._targetPosition = null;
     this._mesh = new THREE.Group();
     this._mesh.position.copy(this._position);
-    
+
     this._createModel();
   }
 
@@ -50,10 +50,10 @@ export abstract class Unit {
       const direction = new THREE.Vector3()
         .subVectors(this._targetPosition, this._position)
         .normalize();
-      
+
       const distance = this._position.distanceTo(this._targetPosition);
       const moveDistance = this._moveSpeed * deltaTime;
-      
+
       if (distance <= moveDistance) {
         // Reached target
         this._position.copy(this._targetPosition);
@@ -64,7 +64,7 @@ export abstract class Unit {
         // Move towards target
         this._position.add(direction.multiplyScalar(moveDistance));
         this._mesh.position.copy(this._position);
-        
+
         // Rotate to face direction of movement
         const angle = Math.atan2(direction.x, direction.z);
         this._mesh.rotation.y = angle;
@@ -116,8 +116,8 @@ export abstract class Unit {
     this._mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         const edgesGeometry = new THREE.EdgesGeometry(child.geometry, 15); // 15 degree threshold
-        const edgesMaterial = new THREE.LineBasicMaterial({ 
-          color, 
+        const edgesMaterial = new THREE.LineBasicMaterial({
+          color,
           linewidth,
           transparent: true,
           opacity: 0.9,
@@ -133,8 +133,8 @@ export abstract class Unit {
     // Remove all outline edges from mesh children
     this._mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        const outlines = child.children.filter(c => c.userData.isOutline);
-        outlines.forEach(outline => {
+        const outlines = child.children.filter((c) => c.userData.isOutline);
+        outlines.forEach((outline) => {
           child.remove(outline);
           if (outline instanceof THREE.LineSegments) {
             outline.geometry.dispose();
@@ -148,13 +148,13 @@ export abstract class Unit {
   public dispose(): void {
     // Clean up outline
     this.hideOutline();
-    
+
     // Clean up Three.js objects
     this._mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
         if (Array.isArray(child.material)) {
-          child.material.forEach(mat => mat.dispose());
+          child.material.forEach((mat) => mat.dispose());
         } else {
           child.material.dispose();
         }

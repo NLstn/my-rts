@@ -59,10 +59,10 @@ export class Worker extends Unit {
 
   protected _createModel(): void {
     const { width, height, depth } = this._config.dimensions;
-    
+
     // Body (torso)
     const bodyGeometry = new THREE.BoxGeometry(width, height * 0.5, depth);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ 
+    const bodyMaterial = new THREE.MeshStandardMaterial({
       color: 0x8b6914, // Brown clothing
       roughness: 0.8,
       metalness: 0.1,
@@ -75,7 +75,7 @@ export class Worker extends Unit {
 
     // Head
     const headGeometry = new THREE.SphereGeometry(width * 0.5, 8, 8);
-    const headMaterial = new THREE.MeshStandardMaterial({ 
+    const headMaterial = new THREE.MeshStandardMaterial({
       color: 0xffdbac, // Skin tone
       roughness: 0.9,
       metalness: 0,
@@ -87,7 +87,7 @@ export class Worker extends Unit {
 
     // Hat
     const hatGeometry = new THREE.ConeGeometry(width * 0.55, height * 0.15, 6);
-    const hatMaterial = new THREE.MeshStandardMaterial({ 
+    const hatMaterial = new THREE.MeshStandardMaterial({
       color: 0x654321, // Dark brown
       roughness: 0.9,
     });
@@ -97,8 +97,12 @@ export class Worker extends Unit {
     this._mesh.add(hat);
 
     // Left arm
-    const armGeometry = new THREE.BoxGeometry(width * 0.25, height * 0.4, depth * 0.8);
-    const armMaterial = new THREE.MeshStandardMaterial({ 
+    const armGeometry = new THREE.BoxGeometry(
+      width * 0.25,
+      height * 0.4,
+      depth * 0.8
+    );
+    const armMaterial = new THREE.MeshStandardMaterial({
       color: 0x8b6914, // Same as body
       roughness: 0.8,
       metalness: 0.1,
@@ -115,8 +119,12 @@ export class Worker extends Unit {
     this._mesh.add(rightArm);
 
     // Left leg
-    const legGeometry = new THREE.BoxGeometry(width * 0.35, height * 0.4, depth * 0.9);
-    const legMaterial = new THREE.MeshStandardMaterial({ 
+    const legGeometry = new THREE.BoxGeometry(
+      width * 0.35,
+      height * 0.4,
+      depth * 0.9
+    );
+    const legMaterial = new THREE.MeshStandardMaterial({
       color: 0x654321, // Dark brown pants
       roughness: 0.8,
       metalness: 0,
@@ -133,8 +141,13 @@ export class Worker extends Unit {
     this._mesh.add(rightLeg);
 
     // Tool (simple pickaxe on back)
-    const handleGeometry = new THREE.CylinderGeometry(0.05, 0.05, height * 0.5, 6);
-    const handleMaterial = new THREE.MeshStandardMaterial({ 
+    const handleGeometry = new THREE.CylinderGeometry(
+      0.05,
+      0.05,
+      height * 0.5,
+      6
+    );
+    const handleMaterial = new THREE.MeshStandardMaterial({
       color: 0x8b4513, // Wood color
       roughness: 0.9,
     });
@@ -146,7 +159,7 @@ export class Worker extends Unit {
 
     // Pickaxe head
     const pickaxeGeometry = new THREE.BoxGeometry(0.3, 0.1, 0.1);
-    const pickaxeMaterial = new THREE.MeshStandardMaterial({ 
+    const pickaxeMaterial = new THREE.MeshStandardMaterial({
       color: 0x555555, // Dark gray metal
       roughness: 0.5,
       metalness: 0.8,
@@ -160,13 +173,15 @@ export class Worker extends Unit {
 
   public update(deltaTime: number): void {
     super.update(deltaTime);
-    
+
     // Update harvesting state machine
     switch (this._state) {
       case WorkerState.MOVING_TO_RESOURCE:
         if (!this._isMoving && this._targetResource) {
           // Reached resource, start harvesting
-          const distance = this._position.distanceTo(this._targetResource.getPosition());
+          const distance = this._position.distanceTo(
+            this._targetResource.getPosition()
+          );
           if (distance <= HARVEST_RANGE) {
             this._state = WorkerState.HARVESTING;
             this._targetResource.setBeingHarvested(true);
@@ -179,22 +194,26 @@ export class Worker extends Unit {
           // Check if resource is depleted
           if (this._targetResource.isDepleted()) {
             this._targetResource.setBeingHarvested(false);
-            
+
             // Try to find a nearby tree
-            const nearbyTree = this._nearbyTreesFinder ? this._nearbyTreesFinder() : null;
+            const nearbyTree = this._nearbyTreesFinder
+              ? this._nearbyTreesFinder()
+              : null;
             if (nearbyTree) {
               // Found a nearby tree, go harvest it
               this._targetResource = nearbyTree;
               this._assignedResource = nearbyTree;
               this._state = WorkerState.MOVING_TO_RESOURCE;
-              
+
               // Calculate position near the tree
               const treePos = nearbyTree.getPosition();
               const direction = new THREE.Vector3()
                 .subVectors(this._position, treePos)
                 .normalize();
               if (direction.length() === 0) direction.set(1, 0, 0);
-              const targetPos = treePos.clone().add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
+              const targetPos = treePos
+                .clone()
+                .add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
               this.moveTo(targetPos);
             } else if (this._carriedResources.wood > 0 && this._homeBase) {
               // No nearby tree, return to base if carrying resources
@@ -210,15 +229,15 @@ export class Worker extends Unit {
           }
 
           this._harvestTimer += deltaTime;
-          
+
           // Harvest at the specified rate
           if (this._harvestTimer >= 1.0) {
             const harvestAmount = Math.floor(this._harvestTimer * HARVEST_RATE);
             this._harvestTimer = 0;
-            
+
             const harvested = this._targetResource.harvest(harvestAmount);
             this._carriedResources.wood += harvested;
-            
+
             // Check if inventory is full
             if (this._carriedResources.wood >= MAX_CARRY_CAPACITY) {
               this._targetResource.setBeingHarvested(false);
@@ -236,7 +255,9 @@ export class Worker extends Unit {
       case WorkerState.RETURNING_TO_BASE:
         if (!this._isMoving && this._homeBase) {
           // Check if we're close enough to the base
-          const distanceToBase = this._position.distanceTo(this._homeBase.getPosition());
+          const distanceToBase = this._position.distanceTo(
+            this._homeBase.getPosition()
+          );
           if (distanceToBase <= BASE_DELIVERY_RANGE) {
             // Close enough, start delivering
             this._state = WorkerState.DELIVERING;
@@ -250,30 +271,36 @@ export class Worker extends Unit {
           // Return to assigned resource
           this._targetResource = this._assignedResource;
           this._state = WorkerState.MOVING_TO_RESOURCE;
-          
+
           // Calculate position near the resource
           const resourcePos = this._assignedResource.getPosition();
           const direction = new THREE.Vector3()
             .subVectors(this._position, resourcePos)
             .normalize();
           if (direction.length() === 0) direction.set(1, 0, 0);
-          const targetPos = resourcePos.clone().add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
+          const targetPos = resourcePos
+            .clone()
+            .add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
           this.moveTo(targetPos);
         } else {
           // Resource is depleted, try to find another
-          const nearbyTree = this._nearbyTreesFinder ? this._nearbyTreesFinder() : null;
+          const nearbyTree = this._nearbyTreesFinder
+            ? this._nearbyTreesFinder()
+            : null;
           if (nearbyTree) {
             this._targetResource = nearbyTree;
             this._assignedResource = nearbyTree;
             this._state = WorkerState.MOVING_TO_RESOURCE;
-            
+
             // Calculate position near the tree
             const treePos = nearbyTree.getPosition();
             const direction = new THREE.Vector3()
               .subVectors(this._position, treePos)
               .normalize();
             if (direction.length() === 0) direction.set(1, 0, 0);
-            const targetPos = treePos.clone().add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
+            const targetPos = treePos
+              .clone()
+              .add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
             this.moveTo(targetPos);
           } else {
             this._state = WorkerState.IDLE;
@@ -283,24 +310,24 @@ export class Worker extends Unit {
         }
         break;
     }
-    
+
     // Add simple walking animation when moving
     if (this._isMoving) {
       const time = Date.now() * 0.005;
-      
+
       // Find legs and arms for animation
       const children = this._mesh.children;
       const leftLeg = children[5]; // Assuming this is the left leg
       const rightLeg = children[6]; // Assuming this is the right leg
       const leftArm = children[3]; // Assuming this is the left arm
       const rightArm = children[4]; // Assuming this is the right arm
-      
+
       if (leftLeg && rightLeg) {
         // Simple leg swing animation
         leftLeg.rotation.x = Math.sin(time) * 0.3;
         rightLeg.rotation.x = Math.sin(time + Math.PI) * 0.3;
       }
-      
+
       if (leftArm && rightArm) {
         // Arms swing opposite to legs
         leftArm.rotation.x = Math.sin(time + Math.PI) * 0.2;
@@ -313,7 +340,7 @@ export class Worker extends Unit {
       const rightLeg = children[6];
       const leftArm = children[3];
       const rightArm = children[4];
-      
+
       if (leftLeg && rightLeg && leftArm && rightArm) {
         leftLeg.rotation.x = 0;
         rightLeg.rotation.x = 0;
@@ -331,20 +358,22 @@ export class Worker extends Unit {
     this._assignedResource = resource;
     this._homeBase = homeBase;
     this._state = WorkerState.MOVING_TO_RESOURCE;
-    
+
     // Calculate a position near the resource instead of at its center
     const resourcePos = resource.getPosition();
     const direction = new THREE.Vector3()
       .subVectors(this._position, resourcePos)
       .normalize();
-    
+
     // If worker is already at the resource position, pick a default direction
     if (direction.length() === 0) {
       direction.set(1, 0, 0);
     }
-    
+
     // Move to a position just outside harvest range
-    const targetPos = resourcePos.clone().add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
+    const targetPos = resourcePos
+      .clone()
+      .add(direction.multiplyScalar(HARVEST_RANGE * 0.8));
     this.moveTo(targetPos);
   }
 
@@ -365,9 +394,11 @@ export class Worker extends Unit {
     const direction = new THREE.Vector3()
       .subVectors(this._position, basePos)
       .normalize();
-    
+
     // Calculate delivery point just outside the base
-    const deliveryPoint = basePos.clone().add(direction.multiplyScalar(BASE_DELIVERY_RANGE));
+    const deliveryPoint = basePos
+      .clone()
+      .add(direction.multiplyScalar(BASE_DELIVERY_RANGE));
     this.moveTo(deliveryPoint);
   }
 

@@ -41,10 +41,10 @@ export class Base extends Building {
 
   protected _createModel(): void {
     const { width, height, depth } = this._config.dimensions;
-    
+
     // Main building body
     const bodyGeometry = new THREE.BoxGeometry(width, height * 0.7, depth);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ 
+    const bodyMaterial = new THREE.MeshStandardMaterial({
       color: 0x8b7355, // Brown/tan color
       roughness: 0.7,
       metalness: 0.1,
@@ -57,20 +57,20 @@ export class Base extends Building {
 
     // Roof - pyramid style
     const roofGeometry = new THREE.ConeGeometry(width * 0.8, height * 0.3, 4);
-    const roofMaterial = new THREE.MeshStandardMaterial({ 
+    const roofMaterial = new THREE.MeshStandardMaterial({
       color: 0x8b4513, // Darker brown for roof
       roughness: 0.8,
       metalness: 0,
     });
     const roof = new THREE.Mesh(roofGeometry, roofMaterial);
-    roof.position.y = height * 0.7 + (height * 0.15);
+    roof.position.y = height * 0.7 + height * 0.15;
     roof.rotation.y = Math.PI / 4; // Rotate 45 degrees to align with building
     roof.castShadow = true;
     this._mesh.add(roof);
 
     // Door
     const doorGeometry = new THREE.BoxGeometry(width * 0.25, height * 0.4, 0.1);
-    const doorMaterial = new THREE.MeshStandardMaterial({ 
+    const doorMaterial = new THREE.MeshStandardMaterial({
       color: 0x654321, // Dark wood color
     });
     const door = new THREE.Mesh(doorGeometry, doorMaterial);
@@ -78,8 +78,12 @@ export class Base extends Building {
     this._mesh.add(door);
 
     // Windows (simple decorative boxes)
-    const windowGeometry = new THREE.BoxGeometry(width * 0.15, height * 0.15, 0.1);
-    const windowMaterial = new THREE.MeshStandardMaterial({ 
+    const windowGeometry = new THREE.BoxGeometry(
+      width * 0.15,
+      height * 0.15,
+      0.1
+    );
+    const windowMaterial = new THREE.MeshStandardMaterial({
       color: 0x87ceeb, // Sky blue for windows
       emissive: 0x87ceeb,
       emissiveIntensity: 0.2,
@@ -96,8 +100,12 @@ export class Base extends Building {
     this._mesh.add(rightWindow);
 
     // Foundation/base
-    const foundationGeometry = new THREE.BoxGeometry(width * 1.1, 0.3, depth * 1.1);
-    const foundationMaterial = new THREE.MeshStandardMaterial({ 
+    const foundationGeometry = new THREE.BoxGeometry(
+      width * 1.1,
+      0.3,
+      depth * 1.1
+    );
+    const foundationMaterial = new THREE.MeshStandardMaterial({
       color: 0x696969, // Dark gray
       roughness: 0.9,
       metalness: 0,
@@ -109,19 +117,19 @@ export class Base extends Building {
 
     // Flag pole
     const poleGeometry = new THREE.CylinderGeometry(0.1, 0.1, height * 0.8, 8);
-    const poleMaterial = new THREE.MeshStandardMaterial({ 
+    const poleMaterial = new THREE.MeshStandardMaterial({
       color: 0x2f4f4f, // Dark slate gray
       metalness: 0.6,
       roughness: 0.4,
     });
     const pole = new THREE.Mesh(poleGeometry, poleMaterial);
-    pole.position.set(width * 0.5, height * 0.7 + (height * 0.4), 0);
+    pole.position.set(width * 0.5, height * 0.7 + height * 0.4, 0);
     pole.castShadow = true;
     this._mesh.add(pole);
 
     // Flag
     const flagGeometry = new THREE.PlaneGeometry(1.5, 1);
-    const flagMaterial = new THREE.MeshStandardMaterial({ 
+    const flagMaterial = new THREE.MeshStandardMaterial({
       color: 0x0066cc, // Blue flag
       side: THREE.DoubleSide,
       roughness: 0.6,
@@ -133,13 +141,14 @@ export class Base extends Building {
 
   public update(deltaTime: number): void {
     super.update(deltaTime);
-    
+
     // Add slight flag animation
     const flag = this._mesh.children.find(
-      child => child instanceof THREE.Mesh && 
-      child.geometry instanceof THREE.PlaneGeometry
+      (child) =>
+        child instanceof THREE.Mesh &&
+        child.geometry instanceof THREE.PlaneGeometry
     );
-    
+
     if (flag) {
       const time = Date.now() * 0.001;
       flag.rotation.y = Math.sin(time * 2) * 0.1;
@@ -191,16 +200,16 @@ export class Base extends Building {
     if (this._trainingQueue.length > 0) {
       this._trainingQueue.shift();
     }
-    
+
     // Reset the flag
     this._workerReadyToSpawn = false;
-    
+
     const spawnPos = this._calculateSpawnPosition();
     const worker = new Worker(spawnPos);
-    
+
     // Move worker to rally point
     worker.moveTo(this._rallyPoint);
-    
+
     return worker;
   }
 
@@ -210,17 +219,26 @@ export class Base extends Building {
   private _calculateSpawnPosition(): THREE.Vector3 {
     const { width, depth } = this._config.dimensions;
     const spawnDistance = Math.max(width, depth) / 2 + 1;
-    
+
     // Try different angles around the base to find a free spot
-    const angles = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4, Math.PI, (5 * Math.PI) / 4, (3 * Math.PI) / 2, (7 * Math.PI) / 4];
-    
+    const angles = [
+      0,
+      Math.PI / 4,
+      Math.PI / 2,
+      (3 * Math.PI) / 4,
+      Math.PI,
+      (5 * Math.PI) / 4,
+      (3 * Math.PI) / 2,
+      (7 * Math.PI) / 4,
+    ];
+
     for (const angle of angles) {
       const testPos = new THREE.Vector3(
         this._position.x + Math.cos(angle) * spawnDistance,
         this._position.y,
         this._position.z + Math.sin(angle) * spawnDistance
       );
-      
+
       // Check if this position is already occupied
       let occupied = false;
       for (const spawnedPos of this._spawnedWorkers) {
@@ -229,7 +247,7 @@ export class Base extends Building {
           break;
         }
       }
-      
+
       if (!occupied) {
         this._spawnedWorkers.add(testPos);
         // Clean up old spawn positions after a delay
@@ -239,7 +257,7 @@ export class Base extends Building {
         return testPos;
       }
     }
-    
+
     // If all positions are occupied, use a random offset
     const randomAngle = Math.random() * Math.PI * 2;
     return new THREE.Vector3(
