@@ -1,4 +1,10 @@
-import { ResourceInventory, BASIC_RESOURCES, ADVANCED_RESOURCES, RESOURCE_NAMES, RESOURCE_COLORS } from '../types/ResourceTypes';
+import {
+  ResourceInventory,
+  BASIC_RESOURCES,
+  ADVANCED_RESOURCES,
+  RESOURCE_NAMES,
+  RESOURCE_COLORS,
+} from '../types/ResourceTypes';
 
 /**
  * HUD component for displaying player resources

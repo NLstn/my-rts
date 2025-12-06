@@ -35,7 +35,7 @@ export abstract class Building {
     this._buildProgress = 0;
     this._mesh = new THREE.Group();
     this._mesh.position.copy(this._position);
-    
+
     this._createModel();
   }
 
@@ -94,8 +94,8 @@ export abstract class Building {
     this._mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         const edgesGeometry = new THREE.EdgesGeometry(child.geometry, 15); // 15 degree threshold
-        const edgesMaterial = new THREE.LineBasicMaterial({ 
-          color, 
+        const edgesMaterial = new THREE.LineBasicMaterial({
+          color,
           linewidth,
           transparent: true,
           opacity: 0.9,
@@ -111,8 +111,8 @@ export abstract class Building {
     // Remove all outline edges from mesh children
     this._mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        const outlines = child.children.filter(c => c.userData.isOutline);
-        outlines.forEach(outline => {
+        const outlines = child.children.filter((c) => c.userData.isOutline);
+        outlines.forEach((outline) => {
           child.remove(outline);
           if (outline instanceof THREE.LineSegments) {
             outline.geometry.dispose();
@@ -126,13 +126,13 @@ export abstract class Building {
   public dispose(): void {
     // Clean up outline
     this.hideOutline();
-    
+
     // Clean up Three.js objects
     this._mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
         if (Array.isArray(child.material)) {
-          child.material.forEach(mat => mat.dispose());
+          child.material.forEach((mat) => mat.dispose());
         } else {
           child.material.dispose();
         }

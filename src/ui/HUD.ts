@@ -11,7 +11,7 @@ export class HUD {
   private _onPauseCallback?: () => void;
   private _onResumeCallback?: () => void;
   private _onMainMenuCallback?: () => void;
-  
+
   // Bottom HUD components
   private _bottomHUD: HTMLElement;
   private _selectedEntityPanel: HTMLElement;
@@ -24,7 +24,7 @@ export class HUD {
     this._pauseMenu = this._createPauseMenu();
     this._continueButton = this._createContinueButton();
     this._mainMenuButton = this._createMainMenuButton();
-    
+
     // Create bottom HUD components
     this._bottomHUD = this._createBottomHUD();
     this._selectedEntityPanel = this._createSelectedEntityPanel();
@@ -34,7 +34,7 @@ export class HUD {
     this._setupPauseMenu();
     this._setupBottomHUD();
     this._setupEventListeners();
-    
+
     document.body.appendChild(this._container);
   }
 
@@ -95,51 +95,51 @@ export class HUD {
   private _createSelectedEntityPanel(): HTMLElement {
     const panel = document.createElement('div');
     panel.className = 'selected-entity-panel';
-    
+
     const entityIcon = document.createElement('div');
     entityIcon.className = 'entity-icon';
-    
+
     const entityInfo = document.createElement('div');
     entityInfo.className = 'entity-info';
-    
+
     const entityName = document.createElement('div');
     entityName.className = 'entity-name';
-    
+
     const entityStats = document.createElement('div');
     entityStats.className = 'entity-stats';
-    
+
     entityInfo.appendChild(entityName);
     entityInfo.appendChild(entityStats);
-    
+
     panel.appendChild(entityIcon);
     panel.appendChild(entityInfo);
-    
+
     return panel;
   }
 
   private _createActionMenu(): HTMLElement {
     const menu = document.createElement('div');
     menu.className = 'action-menu';
-    
+
     return menu;
   }
 
   private _createMinimap(): HTMLElement {
     const minimap = document.createElement('div');
     minimap.className = 'minimap';
-    
+
     const minimapCanvas = document.createElement('canvas');
     minimapCanvas.className = 'minimap-canvas';
     minimapCanvas.width = 200;
     minimapCanvas.height = 200;
-    
+
     const placeholder = document.createElement('div');
     placeholder.className = 'minimap-placeholder';
     placeholder.textContent = 'Minimap';
-    
+
     minimap.appendChild(minimapCanvas);
     minimap.appendChild(placeholder);
-    
+
     return minimap;
   }
 
@@ -160,7 +160,9 @@ export class HUD {
   private _setupEventListeners(): void {
     this._menuButton.addEventListener('click', () => this._toggleMenu());
     this._continueButton.addEventListener('click', () => this._closeMenu());
-    this._mainMenuButton.addEventListener('click', () => this._returnToMainMenu());
+    this._mainMenuButton.addEventListener('click', () =>
+      this._returnToMainMenu()
+    );
   }
 
   private _toggleMenu(): void {
@@ -242,11 +244,18 @@ export class HUD {
   /**
    * Update the selected entity panel with entity information
    */
-  public updateSelectedEntity(entityData: { name: string; icon: string; health: number; maxHealth: number } | null): void {
+  public updateSelectedEntity(
+    entityData: {
+      name: string;
+      icon: string;
+      health: number;
+      maxHealth: number;
+    } | null
+  ): void {
     const icon = this._selectedEntityPanel.querySelector('.entity-icon');
     const name = this._selectedEntityPanel.querySelector('.entity-name');
     const stats = this._selectedEntityPanel.querySelector('.entity-stats');
-    
+
     if (!entityData) {
       // Clear the panel but keep it visible
       if (icon) icon.textContent = '';
@@ -254,47 +263,55 @@ export class HUD {
       if (stats) stats.textContent = '';
       return;
     }
-    
+
     if (icon) icon.textContent = entityData.icon;
     if (name) name.textContent = entityData.name;
-    if (stats) stats.textContent = `HP: ${Math.round(entityData.health)}/${entityData.maxHealth}`;
+    if (stats)
+      stats.textContent = `HP: ${Math.round(entityData.health)}/${entityData.maxHealth}`;
   }
 
   /**
    * Update the action menu with buttons
    */
-  public updateActionMenu(actions: Array<{ label: string; icon: string; callback: () => void; enabled?: boolean }> | null): void {
+  public updateActionMenu(
+    actions: Array<{
+      label: string;
+      icon: string;
+      callback: () => void;
+      enabled?: boolean;
+    }> | null
+  ): void {
     // Clear existing actions
     this._actionMenu.innerHTML = '';
-    
+
     if (!actions || actions.length === 0) {
       return;
     }
-    
+
     // Create action buttons
-    actions.forEach(action => {
+    actions.forEach((action) => {
       const button = document.createElement('button');
       button.className = 'action-button';
       if (action.enabled === false) {
         button.disabled = true;
         button.className += ' action-button-disabled';
       }
-      
+
       const icon = document.createElement('div');
       icon.className = 'action-icon';
       icon.textContent = action.icon;
-      
+
       const label = document.createElement('div');
       label.className = 'action-label';
       label.textContent = action.label;
-      
+
       button.appendChild(icon);
       button.appendChild(label);
       button.addEventListener('click', (e) => {
         e.stopPropagation();
         action.callback();
       });
-      
+
       this._actionMenu.appendChild(button);
     });
   }
@@ -302,10 +319,13 @@ export class HUD {
   /**
    * Update training queue display
    */
-  public updateTrainingQueue(queueData: { count: number; progress: number } | null): void {
+  public updateTrainingQueue(
+    queueData: { count: number; progress: number } | null
+  ): void {
     // Find or create queue display element
-    let queueDisplay = this._selectedEntityPanel.querySelector('.training-queue');
-    
+    let queueDisplay =
+      this._selectedEntityPanel.querySelector('.training-queue');
+
     if (!queueData || queueData.count === 0) {
       // Remove queue display if no queue
       if (queueDisplay) {
@@ -313,13 +333,13 @@ export class HUD {
       }
       return;
     }
-    
+
     if (!queueDisplay) {
       queueDisplay = document.createElement('div');
       queueDisplay.className = 'training-queue';
       this._selectedEntityPanel.appendChild(queueDisplay);
     }
-    
+
     // Update queue display
     const progressPercent = Math.round(queueData.progress * 100);
     queueDisplay.innerHTML = `
@@ -336,8 +356,10 @@ export class HUD {
   public dispose(): void {
     this._menuButton.removeEventListener('click', () => this._toggleMenu());
     this._continueButton.removeEventListener('click', () => this._closeMenu());
-    this._mainMenuButton.removeEventListener('click', () => this._returnToMainMenu());
-    
+    this._mainMenuButton.removeEventListener('click', () =>
+      this._returnToMainMenu()
+    );
+
     if (this._container.parentNode) {
       this._container.parentNode.removeChild(this._container);
     }

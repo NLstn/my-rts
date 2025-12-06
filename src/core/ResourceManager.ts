@@ -1,4 +1,8 @@
-import { ResourceType, ResourceInventory, ResourceCost } from '../types/ResourceTypes';
+import {
+  ResourceType,
+  ResourceInventory,
+  ResourceCost,
+} from '../types/ResourceTypes';
 
 /**
  * Manages global resources for the player

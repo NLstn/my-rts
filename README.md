@@ -29,12 +29,14 @@ This project aims to create a modern, browser-based RTS game featuring:
 ### Development Setup
 
 1. Clone the repository:
+
    ```bash
    git clone <repository-url>
    cd my-rts
    ```
 
 2. Open in VS Code:
+
    ```bash
    code .
    ```
@@ -44,6 +46,7 @@ This project aims to create a modern, browser-based RTS game featuring:
 4. The devcontainer will automatically install dependencies via `npm install`
 
 5. Start the development server:
+
    ```bash
    npm run dev
    ```
@@ -94,6 +97,7 @@ npm run test:watch   # Run tests in watch mode
 ## Game Features (Planned)
 
 ### Phase 1: Core Foundation
+
 - [x] Project setup and devcontainer
 - [ ] Basic 3D scene with Three.js
 - [ ] Camera controls (pan, zoom, rotate)
@@ -101,24 +105,28 @@ npm run test:watch   # Run tests in watch mode
 - [ ] Grid system for building placement
 
 ### Phase 2: Resource Management
+
 - [ ] Resource types (wood, stone, food, gold)
 - [ ] Resource gathering mechanics
 - [ ] Resource display UI
 - [ ] Storage buildings
 
 ### Phase 3: Buildings
+
 - [ ] Building placement system
 - [ ] Construction mechanics
 - [ ] Building types (houses, storage, production)
 - [ ] Building upgrades
 
 ### Phase 4: Units
+
 - [ ] Unit creation and management
 - [ ] Pathfinding
 - [ ] Unit selection and commands
 - [ ] Different unit types (workers, soldiers, etc.)
 
 ### Phase 5: Game Mechanics
+
 - [ ] Day/night cycle
 - [ ] Weather system
 - [ ] AI opponents
@@ -135,6 +143,7 @@ See [AGENTS.md](AGENTS.md) for guidelines on working with AI coding agents on th
 ## Acknowledgments
 
 Inspired by:
+
 - Anno series (Blue Byte)
 - Age of Empires series (Ensemble Studios)
 - Age of Mythology (Ensemble Studios)

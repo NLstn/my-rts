@@ -40,7 +40,7 @@ class Game {
     this._resourceManager = new ResourceManager();
     this._raycaster = new THREE.Raycaster();
     this._mouse = new THREE.Vector2();
-    
+
     this._setupRenderer();
     this._setupCamera();
     this._setupScene();
@@ -74,9 +74,9 @@ class Game {
 
     // Add a simple ground plane
     const groundGeometry = new THREE.PlaneGeometry(50, 50);
-    const groundMaterial = new THREE.MeshStandardMaterial({ 
+    const groundMaterial = new THREE.MeshStandardMaterial({
       color: 0x3a7d44,
-      side: THREE.DoubleSide 
+      side: THREE.DoubleSide,
     });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
@@ -90,10 +90,21 @@ class Game {
 
   private _setupEventListeners(): void {
     window.addEventListener('resize', this._onWindowResize.bind(this));
-    this._renderer.domElement.addEventListener('click', this._onCanvasClick.bind(this));
-    this._renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault()); // Disable context menu
-    this._renderer.domElement.addEventListener('mousedown', this._onCanvasClick.bind(this));
-    this._renderer.domElement.addEventListener('mousemove', this._onCanvasMouseMove.bind(this));
+    this._renderer.domElement.addEventListener(
+      'click',
+      this._onCanvasClick.bind(this)
+    );
+    this._renderer.domElement.addEventListener('contextmenu', (e) =>
+      e.preventDefault()
+    ); // Disable context menu
+    this._renderer.domElement.addEventListener(
+      'mousedown',
+      this._onCanvasClick.bind(this)
+    );
+    this._renderer.domElement.addEventListener(
+      'mousemove',
+      this._onCanvasMouseMove.bind(this)
+    );
   }
 
   private _setupHUD(): void {
@@ -158,15 +169,15 @@ class Game {
   private _returnToMainMenu(): void {
     this.stop();
     this.dispose();
-    
+
     // Show main menu
     const menu = document.getElementById('menu');
     const gameContainer = document.getElementById('game-container');
-    
+
     if (menu) {
       menu.style.display = 'flex';
     }
-    
+
     if (gameContainer) {
       gameContainer.style.display = 'none';
     }
@@ -195,7 +206,10 @@ class Game {
 
     // Check base
     const baseMesh = this._base.getMesh();
-    const baseIntersects = this._raycaster.intersectObjects(baseMesh.children, true);
+    const baseIntersects = this._raycaster.intersectObjects(
+      baseMesh.children,
+      true
+    );
     if (baseIntersects.length > 0) {
       newHoveredEntity = this._base;
     }
@@ -204,7 +218,10 @@ class Game {
     if (!newHoveredEntity) {
       for (const worker of this._workers) {
         const workerMesh = worker.getMesh();
-        const workerIntersects = this._raycaster.intersectObjects(workerMesh.children, true);
+        const workerIntersects = this._raycaster.intersectObjects(
+          workerMesh.children,
+          true
+        );
         if (workerIntersects.length > 0) {
           newHoveredEntity = worker;
           break;
@@ -216,7 +233,10 @@ class Game {
     if (!newHoveredEntity) {
       for (const tree of this._trees) {
         const treeMesh = tree.getMesh();
-        const treeIntersects = this._raycaster.intersectObjects(treeMesh.children, true);
+        const treeIntersects = this._raycaster.intersectObjects(
+          treeMesh.children,
+          true
+        );
         if (treeIntersects.length > 0) {
           newHoveredEntity = tree;
           break;
@@ -264,7 +284,10 @@ class Game {
 
     // Check base
     const baseMesh = this._base.getMesh();
-    const baseIntersects = this._raycaster.intersectObjects(baseMesh.children, true);
+    const baseIntersects = this._raycaster.intersectObjects(
+      baseMesh.children,
+      true
+    );
     if (baseIntersects.length > 0) {
       clickedEntity = this._base;
     }
@@ -273,7 +296,10 @@ class Game {
     if (!clickedEntity) {
       for (const worker of this._workers) {
         const workerMesh = worker.getMesh();
-        const workerIntersects = this._raycaster.intersectObjects(workerMesh.children, true);
+        const workerIntersects = this._raycaster.intersectObjects(
+          workerMesh.children,
+          true
+        );
         if (workerIntersects.length > 0) {
           clickedEntity = worker;
           break;
@@ -285,7 +311,10 @@ class Game {
     if (!clickedEntity) {
       for (const tree of this._trees) {
         const treeMesh = tree.getMesh();
-        const treeIntersects = this._raycaster.intersectObjects(treeMesh.children, true);
+        const treeIntersects = this._raycaster.intersectObjects(
+          treeMesh.children,
+          true
+        );
         if (treeIntersects.length > 0) {
           clickedEntity = tree;
           break;
@@ -318,7 +347,10 @@ class Game {
     // Check if clicking on a tree
     for (const tree of this._trees) {
       const treeMesh = tree.getMesh();
-      const treeIntersects = this._raycaster.intersectObjects(treeMesh.children, true);
+      const treeIntersects = this._raycaster.intersectObjects(
+        treeMesh.children,
+        true
+      );
       if (treeIntersects.length > 0 && !tree.isDepleted()) {
         // Command worker to harvest this tree
         this._selectedEntity.harvestResource(tree, this._base);
@@ -327,7 +359,10 @@ class Game {
     }
 
     // If not clicking on a tree, just move to location
-    const groundIntersects = this._raycaster.intersectObjects(this._scene.children, true);
+    const groundIntersects = this._raycaster.intersectObjects(
+      this._scene.children,
+      true
+    );
     if (groundIntersects.length > 0) {
       const targetPosition = groundIntersects[0].point;
       this._selectedEntity.moveTo(targetPosition);
@@ -340,15 +375,17 @@ class Game {
   private _findNearbyTree(worker: Worker): Tree | null {
     const workerPos = worker.getPosition();
     const assignedResource = worker.getAssignedResource();
-    const searchPos = assignedResource ? assignedResource.getPosition() : workerPos;
-    
+    const searchPos = assignedResource
+      ? assignedResource.getPosition()
+      : workerPos;
+
     let closestTree: Tree | null = null;
     let closestDistance = Infinity;
     const MAX_SEARCH_DISTANCE = 15; // Only search within 15 units
 
     for (const tree of this._trees) {
       if (tree.isDepleted()) continue;
-      
+
       const distance = searchPos.distanceTo(tree.getPosition());
       if (distance < closestDistance && distance <= MAX_SEARCH_DISTANCE) {
         closestDistance = distance;
@@ -366,12 +403,12 @@ class Game {
     }
 
     this._selectedEntity = entity;
-    
+
     // Add selection outline (smaller, different color)
     if (this._selectedEntity) {
       this._selectedEntity.showOutline(0xffff00, 2); // Yellow, smaller outline
     }
-    
+
     this._updateHUDSelection();
   }
 
@@ -379,7 +416,7 @@ class Game {
     // Remove selection outline
     if (this._selectedEntity) {
       this._selectedEntity.hideOutline();
-      
+
       // Restore hover outline if still hovering
       if (this._selectedEntity === this._hoveredEntity) {
         this._selectedEntity.showOutline(0x00ffff, 3);
@@ -397,7 +434,7 @@ class Game {
       let icon = '❓';
       let health = 0;
       let maxHealth = 0;
-      
+
       if (this._selectedEntity instanceof Base) {
         name = 'Base';
         icon = '🏛️';
@@ -450,7 +487,7 @@ class Game {
     let icon = '❓';
     let health = 0;
     let maxHealth = 0;
-    
+
     if (this._selectedEntity instanceof Base) {
       name = 'Base';
       icon = '🏛️';
@@ -515,7 +552,7 @@ class Game {
 
   public start(): void {
     if (this._isRunning) return;
-    
+
     this._isRunning = true;
     this._lastTime = performance.now();
     this._gameLoop(this._lastTime);
@@ -542,26 +579,26 @@ class Game {
     if (this._isPaused) {
       return;
     }
-    
+
     // Update buildings
     this._base.update(deltaTime);
 
     // Check if a worker is ready to spawn
     if (this._base.hasWorkerReady()) {
       const worker = this._base.spawnWorker();
-      
+
       // Set up tree finder callback for this worker
       worker.setTreeFinder(() => this._findNearbyTree(worker));
-      
+
       this._workers.push(worker);
       this._scene.add(worker.getMesh());
     }
-    
+
     // Update workers
     for (let i = this._workers.length - 1; i >= 0; i--) {
       const worker = this._workers[i];
       worker.update(deltaTime);
-      
+
       // Check if worker is ready to deliver resources
       if (worker.isReadyToDeliver()) {
         const resources = worker.collectCarriedResources();
@@ -575,20 +612,20 @@ class Game {
           this._resourceManager.addResource('stone', resources.stone);
         }
       }
-      
+
       // Remove dead workers
       if (worker.isDead()) {
         this._scene.remove(worker.getMesh());
         worker.dispose();
         this._workers.splice(i, 1);
-        
+
         // Deselect if the dead worker was selected
         if (this._selectedEntity === worker) {
           this._deselectEntity();
         }
       }
     }
-    
+
     // Update trees - remove depleted ones with fade effect
     for (let i = this._trees.length - 1; i >= 0; i--) {
       const tree = this._trees[i];
@@ -597,14 +634,14 @@ class Game {
         this._scene.remove(tree.getMesh());
         tree.dispose();
         this._trees.splice(i, 1);
-        
+
         // Deselect if the depleted tree was selected
         if (this._selectedEntity === tree) {
           this._deselectEntity();
         }
       }
     }
-    
+
     // Update HUD stats if an entity is selected (not the action menu)
     if (this._selectedEntity) {
       this._updateHUDStats();
@@ -620,24 +657,33 @@ class Game {
     this._hud.dispose();
     this._resourceHUD.dispose();
     this._base.dispose();
-    
+
     // Dispose all workers
     for (const worker of this._workers) {
       worker.dispose();
     }
     this._workers = [];
-    
+
     // Dispose all trees
     for (const tree of this._trees) {
       tree.dispose();
     }
     this._trees = [];
-    
+
     this._renderer.dispose();
     window.removeEventListener('resize', this._onWindowResize.bind(this));
-    this._renderer.domElement.removeEventListener('click', this._onCanvasClick.bind(this));
-    this._renderer.domElement.removeEventListener('mousedown', this._onCanvasClick.bind(this));
-    this._renderer.domElement.removeEventListener('mousemove', this._onCanvasMouseMove.bind(this));
+    this._renderer.domElement.removeEventListener(
+      'click',
+      this._onCanvasClick.bind(this)
+    );
+    this._renderer.domElement.removeEventListener(
+      'mousedown',
+      this._onCanvasClick.bind(this)
+    );
+    this._renderer.domElement.removeEventListener(
+      'mousemove',
+      this._onCanvasMouseMove.bind(this)
+    );
   }
 }
 
@@ -653,12 +699,12 @@ startButton?.addEventListener('click', () => {
   if (menu) {
     menu.style.display = 'none';
   }
-  
+
   // Show game container
   if (gameContainer) {
     gameContainer.style.display = 'block';
   }
-  
+
   // Initialize and start game
   game = new Game();
   game.start();

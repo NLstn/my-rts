@@ -7,6 +7,7 @@ This document provides guidelines for AI coding agents (like GitHub Copilot, Cur
 This is a browser-based real-time strategy game inspired by Anno, Age of Empires, Age of Mythology, and The Settlers. The game is built with TypeScript and Three.js, targeting modern web browsers.
 
 ### Core Technologies
+
 - **TypeScript**: All game code should be strongly typed
 - **Three.js**: For 3D rendering and scene management
 - **Vite**: Build tool and dev server
@@ -15,23 +16,28 @@ This is a browser-based real-time strategy game inspired by Anno, Age of Empires
 ## Architecture Principles
 
 ### 1. Entity-Component-System (ECS) Pattern
+
 Consider using an ECS-like architecture for game objects:
+
 - **Entities**: Game objects (units, buildings, resources)
 - **Components**: Data containers (position, health, sprite)
 - **Systems**: Logic processors (rendering, movement, combat)
 
 ### 2. Separation of Concerns
+
 - Keep game logic separate from rendering
 - Separate input handling from game state
 - Use dependency injection where appropriate
 
 ### 3. Performance Considerations
+
 - Optimize for 60 FPS gameplay
 - Use object pooling for frequently created/destroyed entities
 - Implement spatial partitioning for collision detection
 - Batch draw calls where possible with Three.js
 
 ### 4. Code Organization
+
 ```
 src/
 ├── core/           # Core engine (game loop, state management)
@@ -49,6 +55,7 @@ src/
 ## Coding Standards
 
 ### TypeScript Guidelines
+
 1. **Use strict mode**: Enable all strict TypeScript checks
 2. **Avoid `any`**: Use proper types or `unknown` with type guards
 3. **Interfaces over types**: Prefer interfaces for object shapes
@@ -56,6 +63,7 @@ src/
 5. **Immutability**: Prefer const and readonly where appropriate
 
 ### Naming Conventions
+
 - **Classes**: PascalCase (e.g., `GameEngine`, `UnitController`)
 - **Interfaces**: PascalCase with "I" prefix optional (e.g., `IRenderable` or `Renderable`)
 - **Functions/Methods**: camelCase (e.g., `updateGameState`, `renderScene`)
@@ -63,6 +71,7 @@ src/
 - **Private members**: prefix with underscore (e.g., `_internalState`)
 
 ### File Structure
+
 ```typescript
 // 1. Imports (grouped: external, internal, types)
 import * as THREE from 'three';
@@ -83,17 +92,17 @@ interface BuildingConfig {
 export class Building implements GameEntity {
   // Properties
   private _position: Position;
-  
+
   // Constructor
   constructor(position: Position) {
     this._position = position;
   }
-  
+
   // Public methods
   public update(deltaTime: number): void {
     // Implementation
   }
-  
+
   // Private methods
   private _checkResources(): boolean {
     // Implementation
@@ -104,12 +113,14 @@ export class Building implements GameEntity {
 ## Game Design Considerations
 
 ### Resource Types
+
 - **Wood**: For basic construction
 - **Stone**: For advanced buildings and defenses
 - **Food**: For population growth and unit maintenance
 - **Gold**: For trading and advanced units
 
 ### Building Categories
+
 - **Residential**: Houses, apartments (increase population)
 - **Production**: Sawmill, quarry, farm (generate resources)
 - **Storage**: Warehouses, granaries (store resources)
@@ -117,6 +128,7 @@ export class Building implements GameEntity {
 - **Special**: Markets, temples (special functions)
 
 ### Unit Types
+
 - **Villagers/Workers**: Gather resources, construct buildings
 - **Military Units**: Various tiers (infantry, archers, cavalry)
 - **Heroes**: Special powerful units (Age of Mythology style)
@@ -124,27 +136,29 @@ export class Building implements GameEntity {
 ## Common Patterns
 
 ### Game Loop
+
 ```typescript
 class GameEngine {
   private _lastTime = 0;
-  
+
   public start(): void {
     requestAnimationFrame(this._gameLoop.bind(this));
   }
-  
+
   private _gameLoop(currentTime: number): void {
     const deltaTime = currentTime - this._lastTime;
     this._lastTime = currentTime;
-    
+
     this._update(deltaTime);
     this._render();
-    
+
     requestAnimationFrame(this._gameLoop.bind(this));
   }
 }
 ```
 
 ### Resource Management
+
 ```typescript
 interface ResourceManager {
   resources: Map<ResourceType, number>;
@@ -155,10 +169,11 @@ interface ResourceManager {
 ```
 
 ### Event System
+
 ```typescript
 class EventBus {
   private _listeners = new Map<string, Set<Function>>();
-  
+
   on(event: string, callback: Function): void;
   off(event: string, callback: Function): void;
   emit(event: string, data?: any): void;
@@ -168,6 +183,7 @@ class EventBus {
 ## Mandatory Quality Checks
 
 ### Before Committing Code
+
 **CRITICAL**: All code changes MUST pass the following checks before being committed:
 
 1. **Build Validation**: Run `npm run build` to ensure the project builds
@@ -201,6 +217,7 @@ describe('ResourceManager', () => {
 ```
 
 ### Test Coverage Requirements
+
 - Aim for 80%+ code coverage for game logic
 - 100% coverage for critical systems (resource management, state management)
 - All public APIs must have tests
@@ -234,6 +251,7 @@ describe('ResourceManager', () => {
 ## Questions to Ask
 
 When implementing new features, consider:
+
 1. Does this fit the ECS architecture?
 2. How will this perform with 1000+ entities?
 3. Is this properly typed?
@@ -250,16 +268,19 @@ When implementing new features, consider:
 ## Notes for Future Development
 
 ### Multiplayer Considerations
+
 - Design with deterministic simulation in mind
 - Separate visual representation from game state
 - Plan for client-side prediction and server reconciliation
 
 ### Modding Support
+
 - Consider plugin architecture
 - Make game data data-driven (JSON configs)
 - Provide clear APIs for custom content
 
 ### Accessibility
+
 - Keyboard navigation support
 - Colorblind-friendly UI
 - Adjustable UI scaling
