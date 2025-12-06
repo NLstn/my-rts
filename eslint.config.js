@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
+import globals from 'globals';
 
 export default [
   {
@@ -16,12 +17,7 @@ export default [
         tsconfigRootDir: import.meta.dirname,
       },
       globals: {
-        console: 'readonly',
-        window: 'readonly',
-        document: 'readonly',
-        navigator: 'readonly',
-        requestAnimationFrame: 'readonly',
-        performance: 'readonly',
+        ...globals.browser,
       },
     },
     plugins: {
